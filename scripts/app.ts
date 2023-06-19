@@ -3,13 +3,8 @@ import express from 'express';
 import {
   InteractionType,
   InteractionResponseType,
-  InteractionResponseFlags,
-  MessageComponentTypes,
-  ButtonStyleTypes,
 } from 'discord-interactions';
-import { VerifyDiscordRequest, getRandomEmoji, DiscordRequest } from './utils.js';
-import { getShuffledOptions, getResult } from './game.js';
-import { updateLanguageServiceSourceFile } from 'typescript';
+import { VerifyDiscordRequest } from './utils.js';
 
 // Create an express app
 const app = express();
