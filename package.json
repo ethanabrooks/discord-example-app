@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc --build",
     "clean": "tsc --build --clean",
+    "app": "node dist/app.js",
     "register": "node dist/commands.js"
   },
   "author": "Ethan Brooks",
