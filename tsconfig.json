@@ -4,11 +4,11 @@
     "noEmitOnError": true,
     "removeComments": false,
     "sourceMap": true,
-    "target": "es5",
+    "target": "ESNext",
     "outDir": "dist",
     "module": "ESNext",
     "esModuleInterop": true,
-    "moduleResolution": "nodenext"
+    "moduleResolution": "NodeNext"
   },
   "include": [
     "scripts/**/*"

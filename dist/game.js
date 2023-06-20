@@ -1,6 +1,6 @@
 import { capitalize } from './utils.js';
 export function getResult(p1, p2) {
-    var gameResult;
+    let gameResult;
     if (RPSChoices[p1.objectName] && RPSChoices[p1.objectName][p2.objectName]) {
         // o1 wins
         gameResult = {
@@ -25,13 +25,13 @@ export function getResult(p1, p2) {
     return formatResult(gameResult);
 }
 function formatResult(result) {
-    var win = result.win, lose = result.lose, verb = result.verb;
+    const { win, lose, verb } = result;
     return verb === 'tie'
-        ? "<@".concat(win.id, "> and <@").concat(lose.id, "> draw with **").concat(win.objectName, "**")
-        : "<@".concat(win.id, ">'s **").concat(win.objectName, "** ").concat(verb, " <@").concat(lose.id, ">'s **").concat(lose.objectName, "**");
+        ? `<@${win.id}> and <@${lose.id}> draw with **${win.objectName}**`
+        : `<@${win.id}>'s **${win.objectName}** ${verb} <@${lose.id}>'s **${lose.objectName}**`;
 }
 // this is just to figure out winner + verb
-var RPSChoices = {
+const RPSChoices = {
     rock: {
         description: 'sedimentary, igneous, or perhaps even metamorphic',
         virus: 'outwaits',
@@ -80,10 +80,9 @@ export function getRPSChoices() {
 }
 // Function to fetch shuffled options for select menu
 export function getShuffledOptions() {
-    var allChoices = getRPSChoices();
-    var options = [];
-    for (var _i = 0, allChoices_1 = allChoices; _i < allChoices_1.length; _i++) {
-        var c = allChoices_1[_i];
+    const allChoices = getRPSChoices();
+    const options = [];
+    for (let c of allChoices) {
         // Formatted for select menus
         // https://discord.com/developers/docs/interactions/message-components#select-menu-object-select-option-structure
         options.push({
@@ -92,6 +91,6 @@ export function getShuffledOptions() {
             description: RPSChoices[c]['description'],
         });
     }
-    return options.sort(function () { return Math.random() - 0.5; });
+    return options.sort(() => Math.random() - 0.5);
 }
 //# sourceMappingURL=game.js.map

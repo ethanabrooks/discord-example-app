@@ -1,45 +1,61 @@
 import 'dotenv/config';
-import { getRPSChoices } from './game.js';
-import { capitalize, InstallGlobalCommands } from './utils.js';
 
-// Get the game choices from game.js
-function createCommandChoices() {
-  const choices = getRPSChoices();
-  const commandChoices = [];
+import { CommandInteraction, ChatInputApplicationCommandData, 
+  Client, ApplicationCommandType, AttachmentBuilder, EmbedBuilder } from "discord.js";
 
-  for (let choice of choices) {
-    commandChoices.push({
-      name: capitalize(choice),
-      value: choice.toLowerCase(),
-    });
-  }
 
-  return commandChoices;
+// OpenAI API
+import { Configuration, OpenAIApi } from 'openai';
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+const openai = new OpenAIApi(configuration);
+
+
+export interface Command extends ChatInputApplicationCommandData {
+    run: (client: Client, interaction: CommandInteraction) => void;
 }
 
-// Simple test command
-const TEST_COMMAND = {
-  name: 'test',
-  description: 'Basic command',
-  type: 1,
+
+export const Hello: Command = {
+  name: "hello",
+  description: "Returns a greeting",
+  type: ApplicationCommandType.ChatInput,
+  run: async (client: Client, interaction: CommandInteraction) => {
+      const content = "Hello there!";
+
+      await interaction.followUp({
+          ephemeral: true,
+          content
+      });
+  }
 };
 
-// Command containing options
-const CHALLENGE_COMMAND = {
-  name: 'challenge',
-  description: 'Challenge to a match of rock paper scissors',
-  options: [
-    {
-      type: 3,
-      name: 'object',
-      description: 'Pick your object',
-      required: true,
-      choices: createCommandChoices(),
-    },
-  ],
-  type: 1,
+export const AIGreet: Command = {
+  name: "ai_greet",
+  description: "The AI greets you",
+  type: ApplicationCommandType.ChatInput,
+  run: async (client: Client, interaction: CommandInteraction) => {
+      // Query ChatGPT for a greeting
+      const chatCompletion = await openai.createChatCompletion({
+        model: "gpt-3.5-turbo",
+        messages: [{role: "user", content: "Write a greeting message."}],
+      });
+      const content = chatCompletion.data.choices[0].message.content;
+      
+      // Attach image with caption
+      const file = new AttachmentBuilder('./test.png');
+      const exampleEmbed = new EmbedBuilder()
+       .setTitle(content)
+       .setImage('attachment://test.png');
+
+      // Send response
+      await interaction.followUp({
+        embeds: [exampleEmbed], 
+        files: [file],
+      })
+  }
 };
 
-const ALL_COMMANDS = [TEST_COMMAND, CHALLENGE_COMMAND];
 
-InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
+export const Commands: Command[] = [Hello, AIGreet];
