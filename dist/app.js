@@ -21,6 +21,7 @@ const clientId = process.env.APP_ID;
 const guildId = process.env.GUILD_ID;
 client.login(token);
 const gptCommandName = "gpt";
+const stopWords = ["Player:", "Game:"];
 const commands = [
     {
         data: new SlashCommandBuilder()
@@ -42,9 +43,25 @@ const commands = [
                 .catch(console.error);
             console.log(messages);
             await interaction.deferReply();
+            const [stopWord1, stopWord2] = stopWords;
+            const concatenated = messages.map(({ content }) => content).join("");
+            const index1 = concatenated.lastIndexOf(stopWord1);
+            const index2 = concatenated.lastIndexOf(stopWord2);
+            let stopWord = null;
+            if (index1 > index2) {
+                stopWord = stopWord2;
+            }
+            else if (index2 > index1) {
+                stopWord = stopWord1;
+            }
+            console.log(messages);
             const chatCompletion = await openai.createChatCompletion({
                 model: "gpt-3.5-turbo",
                 messages: messages,
+                stop: stopWord,
+                temperature: 1,
+                max_tokens: 1000,
+                top_p: 0.5,
             });
             const content = chatCompletion.data.choices[0].message.content;
             console.log(content);
