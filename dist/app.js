@@ -1,6 +1,6 @@
 import "dotenv/config";
 // Require the necessary discord.js classes
-import { Client, Collection, Events, GatewayIntentBits, REST, Routes, SlashCommandBuilder, } from "discord.js";
+import { Client, Collection, Events, GatewayIntentBits, PermissionsBitField, REST, Routes, SlashCommandBuilder, } from "discord.js";
 export default class MyClient extends Client {
     commands; // use correct type :)
     constructor(options) {
@@ -8,14 +8,19 @@ export default class MyClient extends Client {
         this.commands = new Collection();
     }
 }
+const permissions = new PermissionsBitField([
+    PermissionsBitField.Flags.ViewChannel,
+    PermissionsBitField.Flags.EmbedLinks,
+    PermissionsBitField.Flags.AttachFiles,
+    PermissionsBitField.Flags.ReadMessageHistory,
+    PermissionsBitField.Flags.ManageRoles,
+]);
 // Create a new client instance
 const client = new MyClient({ intents: [GatewayIntentBits.Guilds] });
 // Log in to Discord with your client's token
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.APP_ID;
 const guildId = process.env.GUILD_ID;
-console.log(clientId);
-console.log(guildId);
 client.login(token);
 const commands = [
     {
@@ -23,6 +28,29 @@ const commands = [
             .setName("ping")
             .setDescription("Replies with Pong!"),
         async execute(interaction) {
+            //   const channel = client.channels.cache.get(interaction.channelId);
+            console.log("ReadMessageHistory", permissions.has(PermissionsBitField.Flags.ReadMessageHistory));
+            console.log("ViewChannel", permissions.has(PermissionsBitField.Flags.ViewChannel));
+            console.log(JSON.stringify(interaction.channel, (_, v) => (typeof v === "bigint" ? v.toString() : v), 4));
+            interaction.channel.messages
+                .fetch({
+                limit: 100,
+                cache: false,
+            })
+                .then((messages) => messages.forEach((message) => {
+                console.log(JSON.stringify(message, null, 4));
+                console.log(message.content);
+            }))
+                .catch(console.error);
+            //   const messages = await channel.history({ limit: 200 }).flatten();
+            //   channel.messages.fetch({ limit: 100 }).then((messages) => {
+            //     console.log(`Received ${messages.size} messages`);
+            //     //Iterate through the messages here with the variable "messages".
+            //     messages.forEach((message) => {
+            //       console.log(JSON.stringify(message, null, 4));
+            //       console.log(message.content);
+            //     });
+            //   });
             await interaction.reply("Pong!");
         },
     },
