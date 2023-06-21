@@ -1,6 +1,11 @@
 import "dotenv/config";
 // Require the necessary discord.js classes
-import { Client, Collection, Events, GatewayIntentBits, PermissionsBitField, REST, Routes, SlashCommandBuilder, } from "discord.js";
+import { Client, Collection, Events, GatewayIntentBits, REST, Routes, SlashCommandBuilder, } from "discord.js";
+import { Configuration, OpenAIApi } from "openai";
+const configuration = new Configuration({
+    apiKey: process.env.OPENAI_API_KEY,
+});
+const openai = new OpenAIApi(configuration);
 export default class MyClient extends Client {
     commands; // use correct type :)
     constructor(options) {
@@ -8,13 +13,6 @@ export default class MyClient extends Client {
         this.commands = new Collection();
     }
 }
-const permissions = new PermissionsBitField([
-    PermissionsBitField.Flags.ViewChannel,
-    PermissionsBitField.Flags.EmbedLinks,
-    PermissionsBitField.Flags.AttachFiles,
-    PermissionsBitField.Flags.ReadMessageHistory,
-    PermissionsBitField.Flags.ManageRoles,
-]);
 // Create a new client instance
 const client = new MyClient({ intents: [GatewayIntentBits.Guilds] });
 // Log in to Discord with your client's token
@@ -22,36 +20,35 @@ const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.APP_ID;
 const guildId = process.env.GUILD_ID;
 client.login(token);
+const gptCommandName = "gpt";
 const commands = [
     {
         data: new SlashCommandBuilder()
-            .setName("ping")
-            .setDescription("Replies with Pong!"),
+            .setName(gptCommandName)
+            .setDescription("query gpt"),
         async execute(interaction) {
-            //   const channel = client.channels.cache.get(interaction.channelId);
-            console.log("ReadMessageHistory", permissions.has(PermissionsBitField.Flags.ReadMessageHistory));
-            console.log("ViewChannel", permissions.has(PermissionsBitField.Flags.ViewChannel));
-            console.log(JSON.stringify(interaction.channel, (_, v) => (typeof v === "bigint" ? v.toString() : v), 4));
-            interaction.channel.messages
+            const messages = await interaction.channel.messages
                 .fetch({
                 limit: 100,
                 cache: false,
             })
-                .then((messages) => messages.forEach((message) => {
-                console.log(JSON.stringify(message, null, 4));
-                console.log(message.content);
-            }))
+                .then((messages) => messages.map((message) => ({
+                role: message.interaction != null &&
+                    message.interaction.commandName == gptCommandName
+                    ? "system"
+                    : "user",
+                content: message.content,
+            })))
                 .catch(console.error);
-            //   const messages = await channel.history({ limit: 200 }).flatten();
-            //   channel.messages.fetch({ limit: 100 }).then((messages) => {
-            //     console.log(`Received ${messages.size} messages`);
-            //     //Iterate through the messages here with the variable "messages".
-            //     messages.forEach((message) => {
-            //       console.log(JSON.stringify(message, null, 4));
-            //       console.log(message.content);
-            //     });
-            //   });
-            await interaction.reply("Pong!");
+            console.log(messages);
+            await interaction.deferReply();
+            const chatCompletion = await openai.createChatCompletion({
+                model: "gpt-3.5-turbo",
+                messages: messages,
+            });
+            const content = chatCompletion.data.choices[0].message.content;
+            console.log(content);
+            await interaction.editReply(content);
         },
     },
     {
