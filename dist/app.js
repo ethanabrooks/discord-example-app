@@ -65,7 +65,7 @@ const commands = [
             });
             const content = chatCompletion.data.choices[0].message.content;
             console.log(content);
-            await interaction.editReply(content);
+            await interaction.editReply(content.slice(0, 2000));
         },
     },
     {
