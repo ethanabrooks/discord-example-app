@@ -12,7 +12,8 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 
-import { Configuration, OpenAIApi } from "openai";
+import { ChatCompletionRequestMessage, Configuration, OpenAIApi } from "openai";
+import { create } from "domain";
 const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -34,6 +35,34 @@ const clientId = process.env.APP_ID;
 const guildId = process.env.GUILD_ID;
 client.login(token);
 
+async function createChatCompletionWithBackoff(
+  messages: ChatCompletionRequestMessage[],
+  stopWord: string | null = null,
+  delay = 1
+): Promise<any> {
+  try {
+    const chatCompletion = await openai.createChatCompletion({
+      model: "gpt-3.5-turbo",
+      messages: messages,
+      stop: stopWord,
+      temperature: 1,
+      max_tokens: 1000,
+      top_p: 0.5,
+    });
+
+    return chatCompletion;
+  } catch (error) {
+    if (error.response.status == 429) {
+      console.error(`Attempt failed. Retrying in ${delay}ms...`);
+
+      // Wait for the delay period and then retry
+      await new Promise((resolve) => setTimeout(resolve, delay));
+
+      // Retry the operation, with a longer delay
+      return createChatCompletionWithBackoff(messages, stopWord, delay * 2);
+    }
+  }
+}
 const gptCommandName = "gpt";
 const stopWords = ["Player:", "Game:"];
 const commands = [
@@ -72,14 +101,10 @@ const commands = [
         stopWord = stopWord1;
       }
       console.log(messages);
-      const chatCompletion = await openai.createChatCompletion({
-        model: "gpt-3.5-turbo",
-        messages: messages,
-        stop: stopWord,
-        temperature: 1,
-        max_tokens: 1000,
-        top_p: 0.5,
-      });
+      const chatCompletion = await createChatCompletionWithBackoff(
+        messages,
+        stopWord
+      );
       const content = chatCompletion.data.choices[0].message.content;
       console.log(content);
 
