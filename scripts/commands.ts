@@ -1,74 +1,182 @@
-import "dotenv/config";
-
 import {
-  CommandInteraction,
-  ChatInputApplicationCommandData,
-  Client,
-  ApplicationCommandType,
-  AttachmentBuilder,
-  EmbedBuilder,
-  TextChannel,
+  SlashCommandBuilder,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, Message
 } from "discord.js";
 
-// OpenAI API
-import { Configuration, OpenAIApi } from "openai";
+import { 
+  ChatCompletionRequestMessage, 
+  Configuration, 
+  OpenAIApi 
+} from "openai";
+
+// OpenAI API configuration
 const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY,
 });
 const openai = new OpenAIApi(configuration);
 
-export interface Command extends ChatInputApplicationCommandData {
-  run: (client: Client, interaction: CommandInteraction) => void;
-}
+const clientId = process.env.APP_ID;
 
-export const Hello: Command = {
-  name: "hello",
-  description: "Returns a greeting",
-  type: ApplicationCommandType.ChatInput,
-  run: async (client: Client, interaction: CommandInteraction) => {
-    const content = "Hello there!";
-    console.log(client.channels.cache);
-
-    const channel = client.channels.cache.get(
-      "1119393916022685759"
-    ) as TextChannel;
-    channel.messages.fetch({ limit: 100 }).then((messages) => {
-      console.log(`Received ${messages.size} messages`);
-      //Iterate through the messages here with the variable "messages".
-      // messages.forEach((message) => console.log(message.content));
-    });
-
-    await interaction.followUp({
-      ephemeral: true,
-      content,
-    });
-  },
-};
-
-export const AIGreet: Command = {
-  name: "ai_greet",
-  description: "The AI greets you",
-  type: ApplicationCommandType.ChatInput,
-  run: async (client: Client, interaction: CommandInteraction) => {
-    // Query ChatGPT for a greeting
+async function createChatCompletionWithBackoff(
+  messages: ChatCompletionRequestMessage[],
+  stopWord: string | null = null,
+  delay = 1
+): Promise<any> {
+  try {
     const chatCompletion = await openai.createChatCompletion({
       model: "gpt-3.5-turbo",
-      messages: [{ role: "user", content: "Write a greeting message." }],
+      messages: messages,
+      stop: stopWord,
+      temperature: 1,
+      max_tokens: 1000,
+      top_p: 0.5,
     });
-    const content = chatCompletion.data.choices[0].message.content;
 
-    // Attach image with caption
-    const file = new AttachmentBuilder("./test.png");
-    const exampleEmbed = new EmbedBuilder()
-      .setTitle(content)
-      .setImage("attachment://test.png");
+    return chatCompletion;
+  } catch (error) {
+    if (error.response.status == 429) {
+      console.error(`Attempt failed. Retrying in ${delay}ms...`);
 
-    // Send response
-    await interaction.followUp({
-      embeds: [exampleEmbed],
-      files: [file],
-    });
+      // Wait for the delay period and then retry
+      await new Promise((resolve) => setTimeout(resolve, delay));
+
+      // Retry the operation, with a longer delay
+      return createChatCompletionWithBackoff(messages, stopWord, delay * 2);
+    }
+  }
+}
+
+
+// Create commands
+const gptCommandName = "gpt";
+const stopWords = ["Player:", "Game:"];
+export const Commands = [
+  {
+    data: new SlashCommandBuilder()
+      .setName(gptCommandName)
+      .setDescription("Query GPT with recent chat history"),
+    async execute(interaction, counter = 0) {
+      const messages = await interaction.channel.messages
+        .fetch({
+          limit: 100,
+          cache: false,
+        })
+        .then((messages) =>
+          messages.reverse().map((message) => ({
+            role:
+              // message.interaction != null &&
+              message.author.id === clientId
+                ? "system"
+                : "user",
+            content: message.content,
+          }))
+        )
+        .catch(console.error);
+      console.log(messages);
+      // console.log(clientId);
+      // const x = await interaction.channel.messages.fetch({limit: 20, cache: false});
+      // console.log(x);
+
+      // Buttons
+      const continueButton = new ButtonBuilder()
+      .setCustomId('continue')
+      .setLabel('Continue')
+      .setStyle(ButtonStyle.Primary);
+
+      const visButton = new ButtonBuilder()
+      .setCustomId('visualize')
+      .setLabel('Visualize')
+      .setStyle(ButtonStyle.Secondary);
+
+      const row = new ActionRowBuilder()
+        .addComponents(continueButton)
+        .addComponents(visButton);
+      
+      if (counter == 0) {
+        await interaction.deferReply();
+      }
+
+      // Query GPT
+      // const [stopWord1, stopWord2] = stopWords;
+      // const concatenated = messages.map(({ content }) => content).join("");
+      // const index1 = concatenated.lastIndexOf(stopWord1);
+      // const index2 = concatenated.lastIndexOf(stopWord2);
+
+      // let stopWord = null;
+      // if (index1 > index2) {
+      //   stopWord = stopWord2;
+      // } else if (index2 > index1) {
+      //   stopWord = stopWord1;
+      // }
+      // console.log(messages);
+      // const chatCompletion = await createChatCompletionWithBackoff(
+      //   messages,
+      //   stopWord
+      // );
+      // const content = chatCompletion.data.choices[0].message.content;
+      
+      const content = 'Test' + counter;
+      console.log(content);
+
+      let response: Message; // Better way to do it?
+      if (counter == 0) {
+        response = await interaction.followUp({
+          content: content.slice(0, 2000),
+          components: [row],
+        });
+      } else {
+        response = await interaction.channel.send({
+          content: content.slice(0, 2000),
+          components: [row],
+        });
+      }
+
+      // Button interaction
+      const collectorFilter = i => i.user.id === interaction.user.id; // Await click from the same user
+      try {
+        const confirmation = await response.awaitMessageComponent({ filter: collectorFilter, time: 60000 });
+
+        // Send new message
+        if (confirmation.customId === 'continue') {
+         await confirmation.update({
+          content: content.slice(0, 2000), 
+          components: []});
+         await this.execute(interaction, counter+1);
+        } else {
+          console.log('Not the same user for button ' + confirmation.customId);
+        }
+
+      // Timeout
+      } catch (e) {
+        //console.log(e)
+        await response.edit({ 
+          content: content.slice(0, 2000),
+          components: [],
+         });
+      }
+    },
   },
-};
-
-export const Commands: Command[] = [Hello, AIGreet];
+  {
+    data: new SlashCommandBuilder()
+      .setName("server")
+      .setDescription("Provides information about the server."),
+    async execute(interaction) {
+      // interaction.guild is the object representing the Guild in which the command was run
+      await interaction.reply(
+        `This server is ${interaction.guild.name} and has ${interaction.guild.memberCount} members.`
+      );
+    },
+  },
+  {
+    data: new SlashCommandBuilder()
+      .setName("user")
+      .setDescription("Provides information about the user."),
+    async execute(interaction) {
+      // interaction.user is the object representing the User who ran the command
+      // interaction.member is the GuildMember object, which represents the user in the specific guild
+      await interaction.reply(
+        `This command was run by ${interaction.user.username}, who joined on ${interaction.member.joinedAt}.`
+      );
+    },
+  },
+];
