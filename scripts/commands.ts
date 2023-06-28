@@ -1,6 +1,7 @@
 import {
   SlashCommandBuilder,
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, Message
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, Message,
+  AttachmentBuilder, EmbedBuilder,
 } from "discord.js";
 
 import { 
@@ -55,7 +56,7 @@ export const Commands = [
     data: new SlashCommandBuilder()
       .setName(gptCommandName)
       .setDescription("Query GPT with recent chat history"),
-    async execute(interaction, counter = 0) {
+    async execute(interaction, counter = 0, speak = true) {
       const messages = await interaction.channel.messages
         .fetch({
           limit: 100,
@@ -64,7 +65,8 @@ export const Commands = [
         .then((messages) =>
           messages.reverse().map((message) => ({
             role:
-              // message.interaction != null &&
+              // message.interaction != null && 
+              // Just check if author id matches bot id
               message.author.id === clientId
                 ? "system"
                 : "user",
@@ -97,27 +99,33 @@ export const Commands = [
       }
 
       // Query GPT
-      // const [stopWord1, stopWord2] = stopWords;
-      // const concatenated = messages.map(({ content }) => content).join("");
-      // const index1 = concatenated.lastIndexOf(stopWord1);
-      // const index2 = concatenated.lastIndexOf(stopWord2);
+      let content: string;
+      if (speak === true) {
+        const [stopWord1, stopWord2] = stopWords;
+        const concatenated = messages.map(({ content }) => content).join("");
+        const index1 = concatenated.lastIndexOf(stopWord1);
+        const index2 = concatenated.lastIndexOf(stopWord2);
 
-      // let stopWord = null;
-      // if (index1 > index2) {
-      //   stopWord = stopWord2;
-      // } else if (index2 > index1) {
-      //   stopWord = stopWord1;
-      // }
-      // console.log(messages);
-      // const chatCompletion = await createChatCompletionWithBackoff(
-      //   messages,
-      //   stopWord
-      // );
-      // const content = chatCompletion.data.choices[0].message.content;
-      
-      const content = 'Test' + counter;
+        let stopWord = null;
+        if (index1 > index2) {
+          stopWord = stopWord2;
+        } else if (index2 > index1) {
+          stopWord = stopWord1;
+        }
+        console.log(messages);
+        const chatCompletion = await createChatCompletionWithBackoff(
+          messages,
+          stopWord
+        );
+        content = chatCompletion.data.choices[0].message.content;
+        // content = 'Test' + counter; // Debug
+      } else {
+        content = 'The visualization is above.';
+      }
       console.log(content);
 
+
+      // Update reply
       let response: Message; // Better way to do it?
       if (counter == 0) {
         response = await interaction.followUp({
@@ -140,10 +148,32 @@ export const Commands = [
         if (confirmation.customId === 'continue') {
          await confirmation.update({
           content: content.slice(0, 2000), 
-          components: []});
+          components: []}
+        );
          await this.execute(interaction, counter+1);
+
+        } else if (confirmation.customId === 'visualize') {
+          // Add attached image
+          const file = new AttachmentBuilder('test.png');
+          const exampleEmbed = new EmbedBuilder()
+            .setTitle('Test Image')
+            .setImage('attachment://test.png');
+          
+          // Send image
+          await interaction.channel.send({ 
+            embeds: [exampleEmbed], 
+            files: [file] 
+          });
+
+          // Clear
+          await confirmation.update({
+            content: content.slice(0, 2000), 
+            components: []}
+          );
+          await this.execute(interaction, counter+1, false);
+
         } else {
-          console.log('Not the same user for button ' + confirmation.customId);
+          console.log('Cannot use button ' + confirmation.customId);
         }
 
       // Timeout
