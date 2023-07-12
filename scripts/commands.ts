@@ -7,45 +7,9 @@ import {
   AttachmentBuilder,
   EmbedBuilder,
 } from "discord.js";
-
-import { ChatCompletionRequestMessage, Configuration, OpenAIApi } from "openai";
-
-// OpenAI API configuration
-const configuration = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-const openai = new OpenAIApi(configuration);
+import createChatCompletionWithBackoff from "./gpt.js";
 
 const clientId = process.env.APP_ID;
-
-async function createChatCompletionWithBackoff(
-  messages: ChatCompletionRequestMessage[],
-  stopWord: string | null = null,
-  delay = 1,
-): Promise<any> {
-  try {
-    const chatCompletion = await openai.createChatCompletion({
-      model: "gpt-3.5-turbo",
-      messages: messages,
-      stop: stopWord,
-      temperature: 1,
-      max_tokens: 1000,
-      top_p: 0.5,
-    });
-
-    return chatCompletion;
-  } catch (error) {
-    if (error.response.status == 429) {
-      console.error(`Attempt failed. Retrying in ${delay}ms...`);
-
-      // Wait for the delay period and then retry
-      await new Promise((resolve) => setTimeout(resolve, delay));
-
-      // Retry the operation, with a longer delay
-      return createChatCompletionWithBackoff(messages, stopWord, delay * 2);
-    }
-  }
-}
 
 // Create commands
 const gptCommandName = "gpt";
@@ -95,9 +59,11 @@ export const Commands = [
       let content: string;
       if (speak === true) {
         console.log(messages);
-        const chatCompletion = await createChatCompletionWithBackoff(messages);
-        content = chatCompletion.data.choices[0].message.content;
-        // content = 'Test' + counter; // Debug
+        const completion = await createChatCompletionWithBackoff(messages);
+        content =
+          completion === undefined
+            ? "Error: GPT response was undefined."
+            : completion;
       } else {
         content = "The visualization is above.";
       }

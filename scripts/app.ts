@@ -29,7 +29,6 @@ const clientId = process.env.APP_ID;
 const guildId = process.env.GUILD_ID;
 client.login(token);
 
-
 // Register commands
 for (const command of Commands) {
   // Set a new item in the Collection with the key as the command name and the value as the exported module
@@ -80,18 +79,18 @@ const rest = new REST().setToken(token);
 (async () => {
   try {
     console.log(
-      `Started refreshing ${Commands.length} application (/) commands.`
+      `Started refreshing ${Commands.length} application (/) commands.`,
     );
     const json_commands = Commands.map((command) => command.data.toJSON());
 
     // The put method is used to fully refresh all commands in the guild with the current set
     const data = (await rest.put(
       Routes.applicationGuildCommands(clientId, guildId),
-      { body: json_commands }
+      { body: json_commands },
     )) as unknown as ApplicationCommand[];
 
     console.log(
-      `Successfully reloaded ${data.length} application (/) commands.`
+      `Successfully reloaded ${data.length} application (/) commands.`,
     );
   } catch (error) {
     // And of course, make sure you catch and log any errors!

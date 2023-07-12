@@ -20,6 +20,7 @@
   "author": "Ethan Brooks",
   "license": "MIT",
   "dependencies": {
+    "@dqbd/tiktoken": "^1.0.7",
     "@types/node": "^20.3.1",
     "concurrently": "^8.2.0",
     "discord-interactions": "^3.2.0",
