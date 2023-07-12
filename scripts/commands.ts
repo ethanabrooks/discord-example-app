@@ -10,6 +10,14 @@ import {
 import createChatCompletionWithBackoff from "./gpt.js";
 
 const clientId = process.env.APP_ID;
+const BUILT_IN_RESPONSE_LIMIT = 2000;
+
+function splitAtResponseLimit(text: string) {
+  return [
+    text.slice(0, BUILT_IN_RESPONSE_LIMIT),
+    text.slice(BUILT_IN_RESPONSE_LIMIT),
+  ];
+}
 
 // Create commands
 export const Commands = [
@@ -56,13 +64,17 @@ export const Commands = [
 
       // Query GPT
       let content: string;
+      let excess: string;
       if (speak === true) {
         console.log(messages);
         const completion = await createChatCompletionWithBackoff(messages);
-        content =
-          completion === undefined
-            ? "Error: GPT response was undefined."
-            : completion;
+        if (completion === undefined) {
+          [content, excess] = ["Error: GPT-3 API call failed", ""];
+        } else {
+          [content, excess] = splitAtResponseLimit(completion);
+        }
+
+        // content = 'Test' + counter; // Debug
       } else {
         content = "The visualization is above.";
       }
@@ -72,12 +84,12 @@ export const Commands = [
       let response: Message; // Better way to do it?
       if (counter == 0) {
         response = await interaction.followUp({
-          content: content.slice(0, 2000),
+          content,
           components: [row],
         });
       } else {
         response = await interaction.channel.send({
-          content: content.slice(0, 2000),
+          content,
           components: [row],
         });
       }
@@ -90,7 +102,7 @@ export const Commands = [
         switch (confirmation.customId) {
           case "continue":
             await confirmation.update({
-              content: content.slice(0, 2000),
+              content,
               components: [],
             });
             await this.execute(interaction, counter + 1);
@@ -110,7 +122,7 @@ export const Commands = [
 
             // Clear
             await confirmation.update({
-              content: content.slice(0, 2000),
+              content,
               components: [],
             });
             await this.execute(interaction, counter + 1, false);
