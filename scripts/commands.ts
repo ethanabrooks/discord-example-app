@@ -72,9 +72,6 @@ export const Commands = [
         )
         .catch(console.error);
       console.log(messages);
-      // console.log(clientId);
-      // const x = await interaction.channel.messages.fetch({limit: 20, cache: false});
-      // console.log(x);
 
       // Buttons
       const continueButton = new ButtonBuilder()
