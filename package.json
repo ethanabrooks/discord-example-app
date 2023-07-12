@@ -10,13 +10,18 @@
   "scripts": {
     "build": "tsc --build",
     "clean": "tsc --build --clean",
-    "app": "node dist/app.js",
-    "register": "node dist/commands.js"
+    "dev": "nodemon --exec \"tsc --build && node dist/app.js\"",
+    "register": "node dist/commands.js",
+    "start": "tsc --build && node dist/app.js",
+    "watch-ts": "tsc -w",
+    "watch-node": "nodemon dist/app.js",
+    "watch": "concurrently -k -p \"[{name}]\" -n \"TypeScript,Node\" -c \"yellow.bold,cyan.bold\" \"npm:watch-ts\" \"npm:watch-node\""
   },
   "author": "Ethan Brooks",
   "license": "MIT",
   "dependencies": {
     "@types/node": "^20.3.1",
+    "concurrently": "^8.2.0",
     "discord-interactions": "^3.2.0",
     "discord.js": "^14.11.0",
     "dotenv": "^16.0.3",
