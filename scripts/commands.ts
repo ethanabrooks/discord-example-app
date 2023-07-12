@@ -3,7 +3,6 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  Message,
   AttachmentBuilder,
   EmbedBuilder,
   CommandInteraction,
@@ -120,12 +119,9 @@ export const Commands = [
         ? await replyWithGPTCompletion(interaction, firstReply)
         : { content: "behold the visualization", components: [] };
       // Update reply
-      let response: Message; // Better way to do it?
-      if (firstReply) {
-        response = await interaction.followUp(reply);
-      } else {
-        response = await interaction.channel.send(reply);
-      }
+      const response = await (firstReply
+        ? interaction.followUp(reply)
+        : interaction.channel.send(reply));
 
       // Button interaction
       try {
