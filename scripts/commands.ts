@@ -147,7 +147,7 @@ export const Commands = [
             });
 
             // Clear
-            await confirmation.update(reply);
+            await confirmation.update({ ...reply, components: [] });
             await this.execute(interaction, {
               firstReply: false,
               speak: false,
