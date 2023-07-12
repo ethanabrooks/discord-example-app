@@ -6,8 +6,10 @@ import {
   Message,
   AttachmentBuilder,
   EmbedBuilder,
+  CommandInteraction,
 } from "discord.js";
 import createChatCompletionWithBackoff from "./gpt.js";
+import { ChatCompletionRequestMessage } from "openai";
 
 const clientId = process.env.APP_ID;
 const BUILT_IN_RESPONSE_LIMIT = 2000;
@@ -25,23 +27,56 @@ export const Commands = [
     data: new SlashCommandBuilder()
       .setName("g")
       .setDescription("Query GPT with recent chat history"),
-    async execute(interaction, counter = 0, speak = true) {
-      const messages = await interaction.channel.messages
-        .fetch({
-          limit: 100,
-          cache: false,
-        })
-        .then((messages) =>
-          messages.reverse().map((message) => ({
-            role:
-              // message.interaction != null &&
-              // Just check if author id matches bot id
-              message.author.id === clientId ? "system" : "user",
-            content: message.content,
-          })),
-        )
-        .catch(console.error);
-      console.log(messages);
+    async execute(interaction: CommandInteraction, counter = 0, speak = true) {
+      const channel = interaction.channel;
+      let content: string;
+      if (channel == null) {
+        content = "Error: Channel not found";
+      } else {
+        const messages = await interaction.channel.messages
+          .fetch({
+            limit: 100,
+            cache: false,
+          })
+          .then((messages) =>
+            messages.reverse().map(
+              (message): ChatCompletionRequestMessage => ({
+                role:
+                  // message.interaction != null &&
+                  // Just check if author id matches bot id
+                  message.author.id === clientId ? "system" : "user",
+                content: message.content,
+              }),
+            ),
+          )
+          .catch(console.error);
+        if (messages instanceof Object) {
+          console.log(messages);
+
+          if (counter == 0) {
+            await interaction.deferReply();
+          }
+
+          // Query GPT
+          let excess: string;
+          if (speak === true) {
+            console.log(messages);
+            const completion = await createChatCompletionWithBackoff(messages);
+            if (completion === undefined) {
+              [content, excess] = ["Error: GPT-3 API call failed", ""];
+            } else {
+              [content, excess] = splitAtResponseLimit(completion);
+            }
+
+            // content = 'Test' + counter; // Debug
+          } else {
+            content = "The visualization is above.";
+          }
+        } else {
+          content = "Error: Failed to fetch messages";
+        }
+      }
+      console.log(content);
 
       // Buttons
       const continueButton = new ButtonBuilder()
@@ -54,31 +89,9 @@ export const Commands = [
         .setLabel("Visualize")
         .setStyle(ButtonStyle.Secondary);
 
-      const row = new ActionRowBuilder()
+      const row = new ActionRowBuilder<ButtonBuilder>()
         .addComponents(continueButton)
         .addComponents(visButton);
-
-      if (counter == 0) {
-        await interaction.deferReply();
-      }
-
-      // Query GPT
-      let content: string;
-      let excess: string;
-      if (speak === true) {
-        console.log(messages);
-        const completion = await createChatCompletionWithBackoff(messages);
-        if (completion === undefined) {
-          [content, excess] = ["Error: GPT-3 API call failed", ""];
-        } else {
-          [content, excess] = splitAtResponseLimit(completion);
-        }
-
-        // content = 'Test' + counter; // Debug
-      } else {
-        content = "The visualization is above.";
-      }
-      console.log(content);
 
       // Update reply
       let response: Message; // Better way to do it?
