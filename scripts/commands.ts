@@ -80,9 +80,9 @@ export const Commands = [
 
       // Buttons
       const buttons = {
-        continue: {
-          id: "continue",
-          label: "Continue",
+        submit: {
+          id: "submit",
+          label: "Submit to GPT",
           style: ButtonStyle.Primary,
         },
         visualize: {
@@ -121,7 +121,7 @@ export const Commands = [
 
         // Send new message
         switch (confirmation.customId) {
-          case buttons.continue.id:
+          case buttons.submit.id:
             await confirmation.update({
               content,
               components: [],
