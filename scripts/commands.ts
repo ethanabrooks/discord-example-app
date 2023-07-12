@@ -49,7 +49,6 @@ const buttons = {
 async function replyWithGPTCompletion(
   interaction: CommandInteraction,
   firstReply: boolean,
-  speak: boolean,
 ) {
   const channel = interaction.channel;
   let content: string;
@@ -82,18 +81,12 @@ async function replyWithGPTCompletion(
 
       // Query GPT
       let excess: string;
-      if (speak === true) {
-        console.log(messages);
-        const completion = await createChatCompletionWithBackoff(messages);
-        if (completion === undefined) {
-          [content, excess] = ["Error: GPT-3 API call failed", ""];
-        } else {
-          [content, excess] = splitAtResponseLimit(completion);
-        }
-
-        // content = 'Test' + counter; // Debug
+      console.log(messages);
+      const completion = await createChatCompletionWithBackoff(messages);
+      if (completion === undefined) {
+        [content, excess] = ["Error: GPT-3 API call failed", ""];
       } else {
-        content = "The visualization is above.";
+        [content, excess] = splitAtResponseLimit(completion);
       }
     } else {
       content = "Error: Failed to fetch messages";
@@ -123,11 +116,9 @@ export const Commands = [
       interaction: CommandInteraction,
       { firstReply = true, speak = true }: Options = {},
     ) {
-      const reply = await replyWithGPTCompletion(
-        interaction,
-        firstReply,
-        speak,
-      );
+      const reply = speak
+        ? await replyWithGPTCompletion(interaction, firstReply)
+        : { content: "behold the visualization", components: [] };
       // Update reply
       let response: Message; // Better way to do it?
       if (firstReply) {
