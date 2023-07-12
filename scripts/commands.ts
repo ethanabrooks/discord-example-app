@@ -21,13 +21,21 @@ function splitAtResponseLimit(text: string) {
   ];
 }
 
+type Options = {
+  firstReply?: boolean;
+  speak?: boolean;
+};
+
 // Create commands
 export const Commands = [
   {
     data: new SlashCommandBuilder()
       .setName("g")
       .setDescription("Query GPT with recent chat history"),
-    async execute(interaction: CommandInteraction, counter = 0, speak = true) {
+    async execute(
+      interaction: CommandInteraction,
+      { firstReply = true, speak = true }: Options = {},
+    ) {
       const channel = interaction.channel;
       let content: string;
       if (channel == null) {
@@ -53,7 +61,7 @@ export const Commands = [
         if (messages instanceof Object) {
           console.log(messages);
 
-          if (counter == 0) {
+          if (firstReply) {
             await interaction.deferReply();
           }
 
@@ -108,7 +116,7 @@ export const Commands = [
 
       // Update reply
       let response: Message; // Better way to do it?
-      if (counter == 0) {
+      if (firstReply) {
         response = await interaction.followUp({
           content,
           components: [row],
@@ -131,7 +139,7 @@ export const Commands = [
               content,
               components: [],
             });
-            await this.execute(interaction, counter + 1);
+            await this.execute(interaction, { firstReply: false });
             break;
           case buttons.visualize.id:
             // Add attached image
@@ -151,7 +159,10 @@ export const Commands = [
               content,
               components: [],
             });
-            await this.execute(interaction, counter + 1, false);
+            await this.execute(interaction, {
+              firstReply: false,
+              speak: false,
+            });
             break;
           default:
             console.log("Cannot use button " + confirmation.customId);
