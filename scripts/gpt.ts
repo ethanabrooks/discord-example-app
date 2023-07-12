@@ -69,6 +69,21 @@ function getMaxTokens(model: string): number {
   }
 }
 
+function getApproxMessageLength(model: string): number {
+  switch (model) {
+    case "gpt-3.5-turbo":
+    case "gpt-3.5-turbo-0301":
+      return 12000;
+    case "gpt-4":
+    case "gpt-4-0314":
+      return 24000;
+    default:
+      throw new Error(
+        `get_max_tokens() is not implemented for model ${model}.`,
+      );
+  }
+}
+
 function concatMaybeStrings(
   string1: string | undefined,
   string2: string | undefined,
@@ -120,26 +135,21 @@ function maybeStringLength(maybeString: string | undefined) {
   return maybeString === undefined ? 0 : maybeString.length;
 }
 
-// Divide a messages list into two halves with equal characters per half.
-function bisectMessages(messages: ChatCompletionRequestMessage[]) {
-  // Calculate the total number of characters in all messages.
-  let totalCharacters = messages.reduce(
-    (total, message) => total + maybeStringLength(message.content),
-    0,
-  );
-  let halfCharacters = Math.floor(totalCharacters / 2);
-
+function truncateMessagesAtNumCharacters(
+  messages: ChatCompletionRequestMessage[],
+  numCharacters: number,
+) {
   const { half } = messages.reduce(
     ({ half, characterCount }, message) => {
       const newCount: number =
         characterCount + maybeStringLength(message.content);
-      if (characterCount < halfCharacters && newCount < halfCharacters) {
+      if (characterCount < numCharacters && newCount < numCharacters) {
         return {
           half: { ...half, first: concatMessages(half.first, [message]) },
           characterCount: newCount,
         };
-      } else if (characterCount < halfCharacters && newCount > halfCharacters) {
-        const length = halfCharacters - characterCount;
+      } else if (characterCount < numCharacters && newCount > numCharacters) {
+        const length = numCharacters - characterCount;
         return {
           half: {
             first: concatMessages(half.first, [
@@ -152,10 +162,7 @@ function bisectMessages(messages: ChatCompletionRequestMessage[]) {
           },
           characterCount: newCount,
         };
-      } else if (
-        characterCount < halfCharacters &&
-        newCount == halfCharacters
-      ) {
+      } else if (characterCount < numCharacters && newCount == numCharacters) {
         return {
           half: {
             ...half,
@@ -168,12 +175,12 @@ function bisectMessages(messages: ChatCompletionRequestMessage[]) {
           },
           characterCount: characterCount + length,
         };
-      } else if (characterCount === halfCharacters) {
+      } else if (characterCount === numCharacters) {
         return {
           half,
           characterCount,
         };
-      } else if (characterCount > halfCharacters) {
+      } else if (characterCount > numCharacters) {
         return {
           half: {
             ...half,
@@ -183,7 +190,7 @@ function bisectMessages(messages: ChatCompletionRequestMessage[]) {
         };
       } else {
         throw new Error(
-          `Case not covered: characterCount: ${characterCount}, halfCharacters: ${halfCharacters}, newCount: ${newCount}`,
+          `Case not covered: characterCount: ${characterCount}, halfCharacters: ${numCharacters}, newCount: ${newCount}`,
         );
       }
     },
@@ -196,6 +203,18 @@ function bisectMessages(messages: ChatCompletionRequestMessage[]) {
     },
   );
   return [half.first, half.second];
+}
+
+// Divide a messages list into two halves with equal characters per half.
+function bisectMessages(messages: ChatCompletionRequestMessage[]) {
+  // Calculate the total number of characters in all messages.
+  let totalCharacters = messages.reduce(
+    (total, message) => total + maybeStringLength(message.content),
+    0,
+  );
+  let halfCharacters = Math.floor(totalCharacters / 2);
+
+  return truncateMessagesAtNumCharacters(messages, halfCharacters);
 }
 
 function messagesLength(messages: ChatCompletionRequestMessage[]) {
@@ -257,7 +276,12 @@ export default async function createChatCompletionWithBackoff(
   delay = 1,
   model: TiktokenModel = MODEL,
 ): Promise<string | undefined> {
+  [messages] = truncateMessagesAtNumCharacters(
+    messages,
+    getApproxMessageLength(model),
+  );
   messages = truncateMessages(messages, model, getMaxTokens(model));
+  console.log("Messages length:", messagesLength(messages));
   try {
     const chatCompletion = await openai.createChatCompletion({
       model: "gpt-3.5-turbo",
