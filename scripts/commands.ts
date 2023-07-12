@@ -49,7 +49,6 @@ async function createChatCompletionWithBackoff(
 
 // Create commands
 const gptCommandName = "gpt";
-const stopWords = ["Player:", "Game:"];
 export const Commands = [
   {
     data: new SlashCommandBuilder()
@@ -95,22 +94,8 @@ export const Commands = [
       // Query GPT
       let content: string;
       if (speak === true) {
-        const [stopWord1, stopWord2] = stopWords;
-        const concatenated = messages.map(({ content }) => content).join("");
-        const index1 = concatenated.lastIndexOf(stopWord1);
-        const index2 = concatenated.lastIndexOf(stopWord2);
-
-        let stopWord = null;
-        if (index1 > index2) {
-          stopWord = stopWord2;
-        } else if (index2 > index1) {
-          stopWord = stopWord1;
-        }
         console.log(messages);
-        const chatCompletion = await createChatCompletionWithBackoff(
-          messages,
-          stopWord,
-        );
+        const chatCompletion = await createChatCompletionWithBackoff(messages);
         content = chatCompletion.data.choices[0].message.content;
         // content = 'Test' + counter; // Debug
       } else {
