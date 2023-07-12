@@ -1,14 +1,14 @@
 import {
   SlashCommandBuilder,
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, Message,
-  AttachmentBuilder, EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  Message,
+  AttachmentBuilder,
+  EmbedBuilder,
 } from "discord.js";
 
-import { 
-  ChatCompletionRequestMessage, 
-  Configuration, 
-  OpenAIApi 
-} from "openai";
+import { ChatCompletionRequestMessage, Configuration, OpenAIApi } from "openai";
 
 // OpenAI API configuration
 const configuration = new Configuration({
@@ -21,7 +21,7 @@ const clientId = process.env.APP_ID;
 async function createChatCompletionWithBackoff(
   messages: ChatCompletionRequestMessage[],
   stopWord: string | null = null,
-  delay = 1
+  delay = 1,
 ): Promise<any> {
   try {
     const chatCompletion = await openai.createChatCompletion({
@@ -47,7 +47,6 @@ async function createChatCompletionWithBackoff(
   }
 }
 
-
 // Create commands
 const gptCommandName = "gpt";
 const stopWords = ["Player:", "Game:"];
@@ -65,13 +64,11 @@ export const Commands = [
         .then((messages) =>
           messages.reverse().map((message) => ({
             role:
-              // message.interaction != null && 
+              // message.interaction != null &&
               // Just check if author id matches bot id
-              message.author.id === clientId
-                ? "system"
-                : "user",
+              message.author.id === clientId ? "system" : "user",
             content: message.content,
-          }))
+          })),
         )
         .catch(console.error);
       console.log(messages);
@@ -81,19 +78,19 @@ export const Commands = [
 
       // Buttons
       const continueButton = new ButtonBuilder()
-      .setCustomId('continue')
-      .setLabel('Continue')
-      .setStyle(ButtonStyle.Primary);
+        .setCustomId("continue")
+        .setLabel("Continue")
+        .setStyle(ButtonStyle.Primary);
 
       const visButton = new ButtonBuilder()
-      .setCustomId('visualize')
-      .setLabel('Visualize')
-      .setStyle(ButtonStyle.Secondary);
+        .setCustomId("visualize")
+        .setLabel("Visualize")
+        .setStyle(ButtonStyle.Secondary);
 
       const row = new ActionRowBuilder()
         .addComponents(continueButton)
         .addComponents(visButton);
-      
+
       if (counter == 0) {
         await interaction.deferReply();
       }
@@ -115,15 +112,14 @@ export const Commands = [
         console.log(messages);
         const chatCompletion = await createChatCompletionWithBackoff(
           messages,
-          stopWord
+          stopWord,
         );
         content = chatCompletion.data.choices[0].message.content;
         // content = 'Test' + counter; // Debug
       } else {
-        content = 'The visualization is above.';
+        content = "The visualization is above.";
       }
       console.log(content);
-
 
       // Update reply
       let response: Message; // Better way to do it?
@@ -140,49 +136,46 @@ export const Commands = [
       }
 
       // Button interaction
-      const collectorFilter = i => i.user.id === interaction.user.id; // Await click from the same user
       try {
-        const confirmation = await response.awaitMessageComponent({ filter: collectorFilter, time: 60000 });
+        const confirmation = await response.awaitMessageComponent();
 
         // Send new message
-        if (confirmation.customId === 'continue') {
-         await confirmation.update({
-          content: content.slice(0, 2000), 
-          components: []}
-        );
-         await this.execute(interaction, counter+1);
-
-        } else if (confirmation.customId === 'visualize') {
+        if (confirmation.customId === "continue") {
+          await confirmation.update({
+            content: content.slice(0, 2000),
+            components: [],
+          });
+          await this.execute(interaction, counter + 1);
+        } else if (confirmation.customId === "visualize") {
           // Add attached image
-          const file = new AttachmentBuilder('test.png');
+          const file = new AttachmentBuilder("test.png");
           const exampleEmbed = new EmbedBuilder()
-            .setTitle('Test Image')
-            .setImage('attachment://test.png');
-          
+            .setTitle("Test Image")
+            .setImage("attachment://test.png");
+
           // Send image
-          await interaction.channel.send({ 
-            embeds: [exampleEmbed], 
-            files: [file] 
+          await interaction.channel.send({
+            embeds: [exampleEmbed],
+            files: [file],
           });
 
           // Clear
           await confirmation.update({
-            content: content.slice(0, 2000), 
-            components: []}
-          );
-          await this.execute(interaction, counter+1, false);
-
+            content: content.slice(0, 2000),
+            components: [],
+          });
+          await this.execute(interaction, counter + 1, false);
         } else {
-          console.log('Cannot use button ' + confirmation.customId);
+          console.log("Cannot use button " + confirmation.customId);
         }
 
-      // Timeout
+        // Timeout
       } catch (e) {
         //console.log(e)
-        await response.edit({ 
+        await response.edit({
           content: content.slice(0, 2000),
           components: [],
-         });
+        });
       }
     },
   },
@@ -193,7 +186,7 @@ export const Commands = [
     async execute(interaction) {
       // interaction.guild is the object representing the Guild in which the command was run
       await interaction.reply(
-        `This server is ${interaction.guild.name} and has ${interaction.guild.memberCount} members.`
+        `This server is ${interaction.guild.name} and has ${interaction.guild.memberCount} members.`,
       );
     },
   },
@@ -205,7 +198,7 @@ export const Commands = [
       // interaction.user is the object representing the User who ran the command
       // interaction.member is the GuildMember object, which represents the user in the specific guild
       await interaction.reply(
-        `This command was run by ${interaction.user.username}, who joined on ${interaction.member.joinedAt}.`
+        `This command was run by ${interaction.user.username}, who joined on ${interaction.member.joinedAt}.`,
       );
     },
   },
