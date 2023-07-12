@@ -79,19 +79,27 @@ export const Commands = [
       console.log(content);
 
       // Buttons
-      const continueButton = new ButtonBuilder()
-        .setCustomId("continue")
-        .setLabel("Continue")
-        .setStyle(ButtonStyle.Primary);
+      const buttons = {
+        continue: {
+          id: "continue",
+          label: "Continue",
+          style: ButtonStyle.Primary,
+        },
+        visualize: {
+          id: "visualize",
+          label: "Visualize",
+          style: ButtonStyle.Secondary,
+        },
+      };
 
-      const visButton = new ButtonBuilder()
-        .setCustomId("visualize")
-        .setLabel("Visualize")
-        .setStyle(ButtonStyle.Secondary);
-
-      const row = new ActionRowBuilder<ButtonBuilder>()
-        .addComponents(continueButton)
-        .addComponents(visButton);
+      const row = Object.values(buttons)
+        .map(({ id, label, style }) =>
+          new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style),
+        )
+        .reduce(
+          (row, button) => row.addComponents(button),
+          new ActionRowBuilder<ButtonBuilder>(),
+        );
 
       // Update reply
       let response: Message; // Better way to do it?
@@ -113,14 +121,14 @@ export const Commands = [
 
         // Send new message
         switch (confirmation.customId) {
-          case "continue":
+          case buttons.continue.id:
             await confirmation.update({
               content,
               components: [],
             });
             await this.execute(interaction, counter + 1);
             break;
-          case "visualize":
+          case buttons.visualize.id:
             // Add attached image
             const file = new AttachmentBuilder("test.png");
             const exampleEmbed = new EmbedBuilder()
