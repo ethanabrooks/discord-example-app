@@ -79,6 +79,11 @@ export const Commands = [
       console.log(content);
 
       // Buttons
+      type ButtonComponents = {
+        id: string;
+        label: string;
+        style: ButtonStyle;
+      };
       const buttons = {
         submit: {
           id: "submit",
@@ -93,7 +98,7 @@ export const Commands = [
       };
 
       const row = Object.values(buttons)
-        .map(({ id, label, style }) =>
+        .map(({ id, label, style }: ButtonComponents) =>
           new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style),
         )
         .reduce(
