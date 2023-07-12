@@ -12,11 +12,10 @@ import createChatCompletionWithBackoff from "./gpt.js";
 const clientId = process.env.APP_ID;
 
 // Create commands
-const gptCommandName = "gpt";
 export const Commands = [
   {
     data: new SlashCommandBuilder()
-      .setName(gptCommandName)
+      .setName("g")
       .setDescription("Query GPT with recent chat history"),
     async execute(interaction, counter = 0, speak = true) {
       const messages = await interaction.channel.messages
