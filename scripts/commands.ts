@@ -91,18 +91,7 @@ async function replyWithGPTCompletion(
       content = "Error: Failed to fetch messages";
     }
   }
-  console.log(content);
-
-  const row = Object.values(buttons)
-    .map(({ id, label, style }: ButtonComponents) =>
-      new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style),
-    )
-    .reduce(
-      (row, button) => row.addComponents(button),
-      new ActionRowBuilder<ButtonBuilder>(),
-    );
-
-  return { content, components: [row] };
+  return content;
 }
 
 // Create commands
@@ -115,9 +104,21 @@ export const Commands = [
       interaction: CommandInteraction,
       { firstReply = true, speak = true }: Options = {},
     ) {
-      const reply = speak
+      const content = speak
         ? await replyWithGPTCompletion(interaction, firstReply)
-        : { content: "behold the visualization", components: [] };
+        : "behold the visualization";
+
+      const row = Object.values(buttons)
+        .map(({ id, label, style }: ButtonComponents) =>
+          new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style),
+        )
+        .reduce(
+          (row, button) => row.addComponents(button),
+          new ActionRowBuilder<ButtonBuilder>(),
+        );
+
+      const reply = { content, components: [row] };
+
       // Update reply
       const response = await (firstReply
         ? interaction.followUp(reply)
