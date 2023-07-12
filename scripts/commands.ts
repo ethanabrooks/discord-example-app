@@ -45,10 +45,7 @@ const buttons = {
   },
 };
 
-async function replyWithGPTCompletion(
-  interaction: CommandInteraction,
-  firstReply: boolean,
-) {
+async function replyWithGPTCompletion(interaction: CommandInteraction) {
   const channel = interaction.channel;
   let content: string;
   if (channel == null) {
@@ -73,10 +70,6 @@ async function replyWithGPTCompletion(
       .catch(console.error);
     if (messages instanceof Object) {
       console.log(messages);
-
-      if (firstReply) {
-        await interaction.deferReply();
-      }
 
       // Query GPT
       let excess: string;
@@ -104,8 +97,12 @@ export const Commands = [
       interaction: CommandInteraction,
       { firstReply = true, speak = true }: Options = {},
     ) {
+      if (firstReply) {
+        await interaction.deferReply();
+      }
+
       const content = speak
-        ? await replyWithGPTCompletion(interaction, firstReply)
+        ? await replyWithGPTCompletion(interaction)
         : "behold the visualization";
 
       const row = Object.values(buttons)
