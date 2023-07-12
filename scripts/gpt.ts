@@ -4,7 +4,10 @@ import {
   encoding_for_model,
   TiktokenModel,
 } from "@dqbd/tiktoken";
+import text from "./prompts.js";
+
 const MODEL = "gpt-3.5-turbo-0301";
+const DEBUG = false;
 
 function numTokensFromMessages(messages: any[], model: TiktokenModel): number {
   let encoding: any;
@@ -276,6 +279,9 @@ export default async function createChatCompletionWithBackoff(
   delay = 1,
   model: TiktokenModel = MODEL,
 ): Promise<string | undefined> {
+  if (DEBUG) {
+    return text;
+  }
   [messages] = truncateMessagesAtNumCharacters(
     messages,
     getApproxMessageLength(model),
