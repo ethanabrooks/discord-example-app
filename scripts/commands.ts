@@ -88,33 +88,36 @@ export const Commands = [
         const confirmation = await response.awaitMessageComponent();
 
         // Send new message
-        if (confirmation.customId === "continue") {
-          await confirmation.update({
-            content: content.slice(0, 2000),
-            components: [],
-          });
-          await this.execute(interaction, counter + 1);
-        } else if (confirmation.customId === "visualize") {
-          // Add attached image
-          const file = new AttachmentBuilder("test.png");
-          const exampleEmbed = new EmbedBuilder()
-            .setTitle("Test Image")
-            .setImage("attachment://test.png");
+        switch (confirmation.customId) {
+          case "continue":
+            await confirmation.update({
+              content: content.slice(0, 2000),
+              components: [],
+            });
+            await this.execute(interaction, counter + 1);
+            break;
+          case "visualize":
+            // Add attached image
+            const file = new AttachmentBuilder("test.png");
+            const exampleEmbed = new EmbedBuilder()
+              .setTitle("Test Image")
+              .setImage("attachment://test.png");
 
-          // Send image
-          await interaction.channel.send({
-            embeds: [exampleEmbed],
-            files: [file],
-          });
+            // Send image
+            await interaction.channel.send({
+              embeds: [exampleEmbed],
+              files: [file],
+            });
 
-          // Clear
-          await confirmation.update({
-            content: content.slice(0, 2000),
-            components: [],
-          });
-          await this.execute(interaction, counter + 1, false);
-        } else {
-          console.log("Cannot use button " + confirmation.customId);
+            // Clear
+            await confirmation.update({
+              content: content.slice(0, 2000),
+              components: [],
+            });
+            await this.execute(interaction, counter + 1, false);
+            break;
+          default:
+            console.log("Cannot use button " + confirmation.customId);
         }
 
         // Timeout
