@@ -3,12 +3,12 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  AttachmentBuilder,
   EmbedBuilder,
   CommandInteraction,
 } from "discord.js";
-import createChatCompletionWithBackoff from "./gpt.js";
+import { createChatCompletionWithBackoff, openai } from "./gpt.js";
 import { ChatCompletionRequestMessage } from "openai";
+import scenePrompt from "./scenePrompt.js";
 
 const clientId = process.env.APP_ID;
 const BUILT_IN_RESPONSE_LIMIT = 2000;
@@ -44,40 +44,85 @@ const buttons = {
   },
 };
 
+async function interactionToMessages(
+  interaction: CommandInteraction,
+): Promise<void | ChatCompletionRequestMessage[]> {
+  return await interaction.channel.messages
+    .fetch({
+      limit: 100,
+      cache: false,
+    })
+    .then((messages) =>
+      messages.reverse().map(
+        (message): ChatCompletionRequestMessage => ({
+          role:
+            // message.interaction != null &&
+            // Just check if author id matches bot id
+            message.author.id === clientId ? "system" : "user",
+          content: message.content,
+        }),
+      ),
+    )
+    .catch(console.error);
+}
+
+async function messagesToContent(
+  messages: void | ChatCompletionRequestMessage[],
+) {
+  if (messages instanceof Object) {
+    // Query GPT
+    const content = await createChatCompletionWithBackoff(messages);
+    return content === undefined ? "Error: GPT-3 API call failed" : content;
+  } else {
+    return "Error: Failed to fetch messages";
+  }
+}
+
 async function replyWithGPTCompletion(interaction: CommandInteraction) {
   const channel = interaction.channel;
-  let content: string;
   if (channel == null) {
-    content = "Error: Channel not found";
+    return "Error: Channel not found";
   } else {
-    const messages = await interaction.channel.messages
-      .fetch({
-        limit: 100,
-        cache: false,
-      })
-      .then((messages) =>
-        messages.reverse().map(
-          (message): ChatCompletionRequestMessage => ({
-            role:
-              // message.interaction != null &&
-              // Just check if author id matches bot id
-              message.author.id === clientId ? "system" : "user",
-            content: message.content,
-          }),
-        ),
-      )
-      .catch(console.error);
-    if (messages instanceof Object) {
-      // Query GPT
-      content = await createChatCompletionWithBackoff(messages);
-      if (content === undefined) {
-        content = "Error: GPT-3 API call failed";
-      }
-    } else {
-      content = "Error: Failed to fetch messages";
-    }
+    const messages = await interactionToMessages(interaction);
+    return await messagesToContent(messages);
   }
-  return content;
+}
+
+async function visualize(interaction: CommandInteraction) {
+  // Add attached image
+  let messages = await interactionToMessages(interaction);
+  if (!(messages instanceof Object)) {
+    messages = [];
+  }
+  messages.push({ role: "system", content: scenePrompt });
+  const scene = await messagesToContent(messages);
+  console.log("=================== Scene");
+  console.log(scene);
+
+  let response: any | null = null;
+  try {
+    response = await openai.createImage({
+      prompt: scene.slice(0, 1000),
+      n: 1,
+      size: "256x256",
+    });
+  } catch (e) {
+    console.log(`Error: ${e}`);
+  }
+  if (response != null) {
+    const [data] = response.data.data;
+    const exampleEmbed = new EmbedBuilder()
+      .setTitle("Scene")
+      .setImage(data.url)
+      .setDescription(scene);
+
+    const reply = { embeds: [exampleEmbed] };
+
+    // Send image
+    interaction.followUp(reply);
+  } else {
+    await interaction.reply("Error: Failed to create image");
+  }
 }
 
 async function handleInteraction({
@@ -133,25 +178,10 @@ async function handleInteraction({
         });
         break;
       case buttons.visualize.id:
-        // Add attached image
-        const file = new AttachmentBuilder("test.png");
-        const exampleEmbed = new EmbedBuilder()
-          .setTitle("Test Image")
-          .setImage("attachment://test.png");
-
-        // Send image
-        await interaction.channel.send({
-          embeds: [exampleEmbed],
-          files: [file],
-        });
+        await achknowledgeAndremoveButtons();
+        await visualize(interaction);
 
         // Clear
-        await achknowledgeAndremoveButtons();
-        await handleInteraction({
-          interaction,
-          firstReply: false,
-          text: "Behold the visualization!",
-        });
         break;
       default:
         console.log("Cannot use button " + confirmation.customId);

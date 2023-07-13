@@ -271,9 +271,9 @@ function truncateMessages(
 const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY,
 });
-const openai = new OpenAIApi(configuration);
+export const openai = new OpenAIApi(configuration);
 
-export default async function createChatCompletionWithBackoff(
+export async function createChatCompletionWithBackoff(
   messages: ChatCompletionRequestMessage[],
   stopWord: string | undefined = undefined,
   delay = 1,
