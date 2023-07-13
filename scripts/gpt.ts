@@ -10,10 +10,6 @@ import { Logger } from "pino";
 const MODEL: TiktokenModel = "gpt-3.5-turbo-0301";
 export const DEBUG = false;
 
-function messagesToString(messages: ChatCompletionRequestMessage[]): string {
-  return messages.reduce((acc, { content }) => acc + content, "");
-}
-
 function numTokensFromMessages(
   messages: ChatCompletionRequestMessage[],
   model: TiktokenModel,
