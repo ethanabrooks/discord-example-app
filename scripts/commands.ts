@@ -40,11 +40,16 @@ async function handleInteraction({
     );
 
   const reply = { content, components: [row] };
+  const channel = interaction.channel;
+  if (channel == null) {
+    console.log("Cannot send message to null channel");
+    return;
+  }
 
   // Update reply
   const response = await (firstReply
     ? interaction.followUp(reply)
-    : interaction.channel.send(reply));
+    : channel.send(reply));
   await response
     .awaitMessageComponent()
     .then(async (buttonInteraction) => {
