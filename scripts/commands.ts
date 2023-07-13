@@ -123,6 +123,7 @@ async function replyWithImage({
   url: string;
   description: string;
 }) {
+  console.log("================ url:", url);
   const exampleEmbed = new EmbedBuilder()
     .setTitle("Scene")
     .setImage(url)
@@ -215,7 +216,11 @@ async function diagram(interaction: CommandInteraction) {
   await uploadBytes(storageRef, buffer);
 
   const url = await getDownloadURL(storageRef);
-  await replyWithImage({ interaction, url, description: completion });
+  await replyWithImage({
+    interaction,
+    url,
+    description: "A topdown view of the scene.",
+  });
 }
 
 async function handleInteraction({

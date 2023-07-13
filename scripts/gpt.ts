@@ -7,7 +7,7 @@ import {
 import text from "./prompts.js";
 
 const MODEL = "gpt-3.5-turbo-0301";
-const DEBUG = true;
+const DEBUG = false;
 
 function numTokensFromMessages(messages: any[], model: TiktokenModel): number {
   let encoding: any;

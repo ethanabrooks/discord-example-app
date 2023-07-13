@@ -16,14 +16,6 @@
           allowUnfree = true;
         };
       };
-      weave-front-end = pkgs.mkYarnPackage {
-        name = "weave-front-end";
-        src = ./.;
-        packageJSON = ./package.json;
-        yarnLock = ./yarn.lock;
-        # NOTE: this is optional and generated dynamically if omitted
-        yarnNix = ./yarn.nix;
-      };
     in {
       devShell = pkgs.mkShell {
         buildInputs = with pkgs; [
@@ -31,7 +23,6 @@
           nodejs_20
           ngrok
           yarn
-          weave-front-end
           libuuid
         ];
         PYTHONBREAKPOINT = "ipdb.set_trace";
