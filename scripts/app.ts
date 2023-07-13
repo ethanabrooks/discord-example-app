@@ -10,6 +10,7 @@ import {
   Routes,
 } from "discord.js";
 import { Commands } from "./commands.js";
+import { createLogger } from "./utils/logger.js";
 
 export default class MyClient extends Client {
   commands: Collection<any, any>; // use correct type :)
@@ -49,6 +50,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   const client = interaction.client as MyClient;
   const command = client.commands.get(interaction.commandName);
+  const logger = createLogger("app", interaction.channelId);
+  logger.info({ interaction: interaction.toJSON() });
 
   if (!command) {
     console.error(`No command matching ${interaction.commandName} was found.`);
@@ -59,6 +62,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await command.execute(interaction);
   } catch (error) {
     console.error(error);
+    logger.error(error);
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp({
         content: "There was an error while executing this command!",
