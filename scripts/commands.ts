@@ -9,6 +9,10 @@ import {
 import { createChatCompletionWithBackoff, openai } from "./gpt.js";
 import { ChatCompletionRequestMessage } from "openai";
 import scenePrompt from "./scenePrompt.js";
+import * as diagramPrompt from "./diagramPrompts.js";
+import { getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
+import { initializeApp } from "firebase/app";
+import { createCanvas } from "canvas";
 
 const clientId = process.env.APP_ID;
 const BUILT_IN_RESPONSE_LIMIT = 2000;
@@ -37,12 +41,34 @@ const buttons = {
     label: "Visualize",
     style: ButtonStyle.Secondary,
   },
+  diagram: {
+    id: "diagram",
+    label: "Diagram",
+    style: ButtonStyle.Secondary,
+  },
   reveal: {
     id: "reveal",
     label: "Reponse cut off. Click to reveal.",
     style: ButtonStyle.Secondary,
   },
 };
+
+async function interactionToTranscript(
+  interaction: CommandInteraction,
+): Promise<string | void> {
+  return await interaction.channel.messages
+    .fetch({
+      limit: 100,
+      cache: false,
+    })
+    .then((messages) =>
+      messages
+        .reverse()
+        .map((message): string => message.content)
+        .join(""),
+    )
+    .catch(console.error);
+}
 
 async function interactionToMessages(
   interaction: CommandInteraction,
@@ -88,6 +114,26 @@ async function replyWithGPTCompletion(interaction: CommandInteraction) {
   }
 }
 
+async function replyWithImage({
+  interaction,
+  url,
+  description,
+}: {
+  interaction: CommandInteraction;
+  url: string;
+  description: string;
+}) {
+  const exampleEmbed = new EmbedBuilder()
+    .setTitle("Scene")
+    .setImage(url)
+    .setDescription(description);
+
+  const reply = { embeds: [exampleEmbed] };
+
+  // Send image
+  interaction.followUp(reply);
+}
+
 async function visualize(interaction: CommandInteraction) {
   // Add attached image
   let messages = await interactionToMessages(interaction);
@@ -111,18 +157,65 @@ async function visualize(interaction: CommandInteraction) {
   }
   if (response != null) {
     const [data] = response.data.data;
-    const exampleEmbed = new EmbedBuilder()
-      .setTitle("Scene")
-      .setImage(data.url)
-      .setDescription(scene);
-
-    const reply = { embeds: [exampleEmbed] };
-
-    // Send image
-    interaction.followUp(reply);
+    await replyWithImage({ interaction, url: data.url, description: scene });
   } else {
     await interaction.reply("Error: Failed to create image");
   }
+}
+
+const storage = getStorage(
+  initializeApp({
+    apiKey: process.env.FIREBASE_API_KEY,
+    authDomain: "game-bot-9e914.firebaseapp.com",
+    projectId: "game-bot-9e914",
+    storageBucket: "game-bot-9e914.appspot.com",
+    messagingSenderId: "1004411272440",
+    appId: "1:1004411272440:web:aaffad4fc33f94171e0f0d",
+    measurementId: "G-JQ7CDWW1S5",
+  }),
+);
+
+async function diagram(interaction: CommandInteraction) {
+  let messages = await interactionToMessages(interaction);
+  if (messages instanceof Object) {
+    const introduction: ChatCompletionRequestMessage = {
+      role: "user",
+      content: diagramPrompt.introduction + "\n# Transcript\n",
+    };
+    const instructions: ChatCompletionRequestMessage = {
+      role: "user",
+      content: diagramPrompt.instructions,
+    };
+    messages = [introduction].concat(messages).concat([instructions]);
+  }
+  const completion = await messagesToContent(messages);
+  console.log("=================== Completion");
+  console.log(completion);
+
+  const regex = /```javascript([\s\S]*?)```/g;
+
+  let match: RegExpExecArray;
+  let buffer: Blob | Uint8Array | ArrayBuffer;
+  let code = "";
+  while ((match = regex.exec(completion)) !== null) {
+    code = match[1];
+  }
+  const canvas = createCanvas(256, 256);
+  code = code.concat(`
+            buffer = canvas.toBuffer("image/png");
+            `);
+
+  eval(code);
+  console.log("buffer", buffer);
+  console.log("====================================");
+
+  const uniqueName = `image-${Date.now()}`;
+  const storageRef = ref(storage, uniqueName);
+
+  await uploadBytes(storageRef, buffer);
+
+  const url = await getDownloadURL(storageRef);
+  await replyWithImage({ interaction, url, description: completion });
 }
 
 async function handleInteraction({
@@ -220,6 +313,15 @@ export const Commands = [
     async execute(interaction: CommandInteraction) {
       await interaction.deferReply();
       await visualize(interaction);
+    },
+  },
+  {
+    data: new SlashCommandBuilder()
+      .setName("diagram")
+      .setDescription("Create a diagram of the scene"),
+    async execute(interaction: CommandInteraction) {
+      await interaction.deferReply();
+      await diagram(interaction);
     },
   },
 ];
