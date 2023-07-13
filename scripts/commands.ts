@@ -6,7 +6,6 @@ import {
   AttachmentBuilder,
   EmbedBuilder,
   CommandInteraction,
-  Message,
 } from "discord.js";
 import createChatCompletionWithBackoff from "./gpt.js";
 import { ChatCompletionRequestMessage } from "openai";
@@ -69,10 +68,7 @@ async function replyWithGPTCompletion(interaction: CommandInteraction) {
       )
       .catch(console.error);
     if (messages instanceof Object) {
-      console.log(messages);
-
       // Query GPT
-      console.log(messages);
       content = await createChatCompletionWithBackoff(messages);
       if (content === undefined) {
         content = "Error: GPT-3 API call failed";
@@ -128,18 +124,21 @@ export const Commands = [
       // Button interaction
       try {
         const confirmation = await response.awaitMessageComponent();
+        async function achknowledgeAndremoveButtons() {
+          await confirmation.update({ ...reply, components: [] });
+        }
 
         // Send new message
         switch (confirmation.customId) {
           case buttons.reveal.id:
-            await confirmation.update({ ...reply, components: [] });
+            await achknowledgeAndremoveButtons();
             await this.execute(interaction, {
               firstReply: false,
               text: excess,
             });
             break;
           case buttons.submit.id:
-            await confirmation.update({ ...reply, components: [] });
+            await achknowledgeAndremoveButtons();
             await this.execute(interaction, { firstReply: false });
             break;
           case buttons.visualize.id:
@@ -156,7 +155,7 @@ export const Commands = [
             });
 
             // Clear
-            await confirmation.update({ ...reply, components: [] });
+            await achknowledgeAndremoveButtons();
             await this.execute(interaction, {
               firstReply: false,
               content: "Behold the visualization!",
