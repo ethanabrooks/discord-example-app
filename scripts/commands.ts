@@ -5,10 +5,13 @@ import {
   ButtonStyle,
   EmbedBuilder,
   CommandInteraction,
+  AttachmentBuilder,
 } from "discord.js";
-import { createChatCompletionWithBackoff, openai } from "./gpt.js";
+import { createChatCompletionWithBackoff, openai, DEBUG } from "./gpt.js";
 import { ChatCompletionRequestMessage } from "openai";
 import scenePrompt from "./scenePrompt.js";
+import * as diagramPrompt from "./diagramPrompts.js";
+import { createCanvas } from "canvas";
 
 const clientId = process.env.APP_ID;
 const BUILT_IN_RESPONSE_LIMIT = 2000;
@@ -35,6 +38,11 @@ const buttons = {
   visualize: {
     id: "visualize",
     label: "Visualize",
+    style: ButtonStyle.Secondary,
+  },
+  diagram: {
+    id: "diagram",
+    label: "Diagram",
     style: ButtonStyle.Secondary,
   },
   reveal: {
@@ -125,6 +133,97 @@ async function visualize(interaction: CommandInteraction) {
   }
 }
 
+async function diagram(interaction: CommandInteraction) {
+  let messages = await interactionToMessages(interaction);
+  if (messages instanceof Object) {
+    const introduction: ChatCompletionRequestMessage = {
+      role: "user",
+      content: diagramPrompt.introduction + "\n# Transcript\n",
+    };
+    const instructions: ChatCompletionRequestMessage = {
+      role: "user",
+      content: diagramPrompt.instructions,
+    };
+    messages = [introduction].concat(messages).concat([instructions]);
+  } else {
+    messages = []; // TODO: handle this better
+  }
+  let completion: string;
+  if (DEBUG) {
+    completion = diagramPrompt.debugDigram;
+  } else {
+    completion = await messagesToContent(messages);
+    console.log("=================== Initial response");
+    console.log(completion);
+    const initialResponse: ChatCompletionRequestMessage = {
+      role: "system",
+      content: completion,
+    };
+    const codeInstructions: ChatCompletionRequestMessage = {
+      role: "user",
+      content: diagramPrompt.codeInstruction,
+    };
+    messages = messages.concat([initialResponse]).concat([codeInstructions]);
+    completion = await messagesToContent(messages);
+  }
+  console.log("=================== Code reponse");
+  console.log(completion);
+  let code: string = completion;
+  const startString = "```javascript";
+  let startIndex = completion.indexOf(startString);
+  let endIndex = completion.indexOf("```", startIndex + 1);
+  startIndex = startIndex === -1 ? 0 : startIndex + startString.length;
+  console.log("Start index: " + startIndex, "End index: " + endIndex);
+
+  // remove everything before and including '```javascript'
+  code = code.slice(startIndex, endIndex);
+
+  // remove all imports
+  code = code
+    .split("\n")
+    .reduce(
+      (acc, line) =>
+        line.trimStart().startsWith("import") ? acc : acc.concat(line),
+      [],
+    )
+    .join("\n");
+  console.log("================== Code");
+  console.log(code);
+  let buffer: Buffer;
+
+  // keep dropping final line until no error
+  let valid = false;
+  while (!valid) {
+    const canvas = createCanvas(500, 500);
+    const finalCode = code.concat(`
+              buffer = canvas.toBuffer("image/png");
+              `);
+
+    try {
+      eval(finalCode);
+      valid = true;
+    } catch (e) {
+      console.log(e);
+      code = code.split("\n").slice(0, -2).join("\n");
+    }
+  }
+  console.log("==================== Buffer");
+  console.log(buffer);
+
+  // Add attached image
+  const name = "diagram.png";
+  const file = new AttachmentBuilder(buffer, { name });
+  const exampleEmbed = new EmbedBuilder()
+    .setTitle("Test Image")
+    .setImage(`attachment://${name}`);
+
+  // Send image
+  await interaction.followUp({
+    embeds: [exampleEmbed],
+    files: [file],
+  });
+}
+
 async function handleInteraction({
   firstReply,
   interaction,
@@ -180,8 +279,10 @@ async function handleInteraction({
       case buttons.visualize.id:
         await achknowledgeAndremoveButtons();
         await visualize(interaction);
-
-        // Clear
+        break;
+      case buttons.diagram.id:
+        await achknowledgeAndremoveButtons();
+        await diagram(interaction);
         break;
       default:
         console.log("Cannot use button " + confirmation.customId);
@@ -220,6 +321,15 @@ export const Commands = [
     async execute(interaction: CommandInteraction) {
       await interaction.deferReply();
       await visualize(interaction);
+    },
+  },
+  {
+    data: new SlashCommandBuilder()
+      .setName("diagram")
+      .setDescription("Create a diagram of the scene"),
+    async execute(interaction: CommandInteraction) {
+      await interaction.deferReply();
+      await diagram(interaction);
     },
   },
 ];
