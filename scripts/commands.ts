@@ -8,6 +8,7 @@ import { ButtonComponents, buttons } from "./buttons.js";
 import submit from "./submit.js";
 import visualize from "./visualize.js";
 import diagram from "./diagram.js";
+import { interactionToMessages } from "./utils/messages.js";
 
 const BUILT_IN_RESPONSE_LIMIT = 2000;
 
@@ -97,6 +98,7 @@ export const Commands = [
       .setDescription("Query GPT with recent chat history"),
     async execute(interaction: CommandInteraction) {
       await interaction.deferReply();
+      await interactionToMessages(interaction);
       const text = await submit(interaction);
       await handleInteraction({
         firstReply: true,
