@@ -21,11 +21,6 @@ function splitAtResponseLimit(text: string) {
   ];
 }
 
-type Options = {
-  firstReply?: boolean;
-  speak?: boolean;
-};
-
 // Buttons
 type ButtonComponents = {
   id: string;
@@ -41,6 +36,11 @@ const buttons = {
   visualize: {
     id: "visualize",
     label: "Visualize",
+    style: ButtonStyle.Secondary,
+  },
+  reveal: {
+    id: "reveal",
+    label: "Reponse cut off. Click to reveal.",
     style: ButtonStyle.Secondary,
   },
 };
@@ -72,13 +72,10 @@ async function replyWithGPTCompletion(interaction: CommandInteraction) {
       console.log(messages);
 
       // Query GPT
-      let excess: string;
       console.log(messages);
-      const completion = await createChatCompletionWithBackoff(messages);
-      if (completion === undefined) {
-        [content, excess] = ["Error: GPT-3 API call failed", ""];
-      } else {
-        [content, excess] = splitAtResponseLimit(completion);
+      content = await createChatCompletionWithBackoff(messages);
+      if (content === undefined) {
+        content = "Error: GPT-3 API call failed";
       }
     } else {
       content = "Error: Failed to fetch messages";
@@ -86,6 +83,11 @@ async function replyWithGPTCompletion(interaction: CommandInteraction) {
   }
   return content;
 }
+
+type Options = {
+  firstReply?: boolean;
+  text?: string | null;
+};
 
 // Create commands
 export const Commands = [
@@ -95,17 +97,19 @@ export const Commands = [
       .setDescription("Query GPT with recent chat history"),
     async execute(
       interaction: CommandInteraction,
-      { firstReply = true, speak = true }: Options = {},
+      { firstReply = true, text = null }: Options = {},
     ) {
       if (firstReply) {
         await interaction.deferReply();
       }
 
-      const content = speak
-        ? await replyWithGPTCompletion(interaction)
-        : "behold the visualization";
+      if (text === null) {
+        text = await replyWithGPTCompletion(interaction);
+      }
 
+      const [content, excess] = splitAtResponseLimit(text);
       const row = Object.values(buttons)
+        .filter(({ id }) => excess.length > 0 || id !== buttons.reveal.id)
         .map(({ id, label, style }: ButtonComponents) =>
           new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style),
         )
@@ -127,6 +131,13 @@ export const Commands = [
 
         // Send new message
         switch (confirmation.customId) {
+          case buttons.reveal.id:
+            await confirmation.update({ ...reply, components: [] });
+            await this.execute(interaction, {
+              firstReply: false,
+              text: excess,
+            });
+            break;
           case buttons.submit.id:
             await confirmation.update({ ...reply, components: [] });
             await this.execute(interaction, { firstReply: false });
@@ -148,7 +159,7 @@ export const Commands = [
             await confirmation.update({ ...reply, components: [] });
             await this.execute(interaction, {
               firstReply: false,
-              speak: false,
+              content: "Behold the visualization!",
             });
             break;
           default:
