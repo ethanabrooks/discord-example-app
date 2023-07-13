@@ -268,7 +268,7 @@ This code will generate a diagram of a medieval village layout with houses, stre
     .setImage(`attachment://${name}`);
 
   // Send image
-  await interaction.channel.send({
+  await interaction.followUp({
     embeds: [exampleEmbed],
     files: [file],
   });
