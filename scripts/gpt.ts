@@ -299,7 +299,8 @@ export async function createChatCompletionWithBackoff({
     length - getApproxMessageLength(model),
   );
   messages = truncateMessages(truncated, model, getMaxTokens(model), discard);
-  console.log("Messages length:", length);
+  console.log("Messages tokens:", numTokensFromMessages(messages, model));
+  console.log("Messages characters:", messagesLength(messages));
   try {
     if (logger != null) {
       logger.debug({ messages });
@@ -324,6 +325,7 @@ export async function createChatCompletionWithBackoff({
     if (logger != null) {
       logger.error(error);
     }
+    console.log(error);
     if (error.response.status == 429) {
       console.error(`Attempt failed. Retrying in ${delay}ms...`);
 
