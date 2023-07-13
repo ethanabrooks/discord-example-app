@@ -5,11 +5,19 @@ import {
   TiktokenModel,
 } from "@dqbd/tiktoken";
 import text from "./prompts.js";
+import { Logger } from "pino";
 
-const MODEL = "gpt-3.5-turbo-0301";
+const MODEL: TiktokenModel = "gpt-3.5-turbo-0301";
 export const DEBUG = false;
 
-function numTokensFromMessages(messages: any[], model: TiktokenModel): number {
+function messagesToString(messages: ChatCompletionRequestMessage[]): string {
+  return messages.reduce((acc, { content }) => acc + content, "");
+}
+
+function numTokensFromMessages(
+  messages: ChatCompletionRequestMessage[],
+  model: TiktokenModel,
+): number {
   let encoding: any;
   try {
     encoding = encoding_for_model(model);
@@ -273,12 +281,19 @@ const configuration = new Configuration({
 });
 export const openai = new OpenAIApi(configuration);
 
-export async function createChatCompletionWithBackoff(
-  messages: ChatCompletionRequestMessage[],
-  stopWord: string | undefined = undefined,
+export async function createChatCompletionWithBackoff({
+  messages,
+  stopWord = undefined,
   delay = 1,
-  model: TiktokenModel = MODEL,
-): Promise<string | undefined> {
+  model = MODEL,
+  logger = null,
+}: {
+  messages: ChatCompletionRequestMessage[];
+  stopWord?: string | undefined;
+  delay?: number;
+  model?: TiktokenModel;
+  logger?: Logger | null;
+}): Promise<string | undefined> {
   if (DEBUG) {
     return text;
   }
@@ -290,7 +305,10 @@ export async function createChatCompletionWithBackoff(
   messages = truncateMessages(truncated, model, getMaxTokens(model), discard);
   console.log("Messages length:", length);
   try {
-    const chatCompletion = await openai.createChatCompletion({
+    if (logger != null) {
+      logger.debug({ messages });
+    }
+    const completion = await openai.createChatCompletion({
       model: "gpt-3.5-turbo",
       messages: messages,
       stop: stopWord,
@@ -298,8 +316,18 @@ export async function createChatCompletionWithBackoff(
       max_tokens: 1000,
       top_p: 0.5,
     });
-    return chatCompletion.data.choices[0].message?.content;
+    const content = completion.data.choices[0].message?.content;
+    if (logger != null) {
+      logger.debug({
+        messages,
+        completion: content,
+      });
+    }
+    return content;
   } catch (error) {
+    if (logger != null) {
+      logger.error(error);
+    }
     if (error.response.status == 429) {
       console.error(`Attempt failed. Retrying in ${delay}ms...`);
 
@@ -307,7 +335,13 @@ export async function createChatCompletionWithBackoff(
       await new Promise((resolve) => setTimeout(resolve, delay));
 
       // Retry the operation, with a longer delay
-      return createChatCompletionWithBackoff(messages, stopWord, delay * 2);
+      return createChatCompletionWithBackoff({
+        messages,
+        stopWord,
+        delay: delay * 2,
+        model,
+        logger,
+      });
     }
   }
 }

@@ -12,6 +12,9 @@ import { ChatCompletionRequestMessage } from "openai";
 import scenePrompt from "./scenePrompt.js";
 import * as diagramPrompt from "./diagramPrompts.js";
 import { createCanvas } from "canvas";
+import { Logger, destination, pino } from "pino";
+import path from "path";
+import { existsSync, mkdirSync } from "fs";
 
 const clientId = process.env.APP_ID;
 const BUILT_IN_RESPONSE_LIMIT = 2000;
@@ -76,14 +79,32 @@ async function interactionToMessages(
 
 async function messagesToContent(
   messages: void | ChatCompletionRequestMessage[],
+  logger: Logger,
 ) {
   if (messages instanceof Object) {
     // Query GPT
-    const content = await createChatCompletionWithBackoff(messages);
+    const content = await createChatCompletionWithBackoff({
+      messages,
+      logger,
+    });
     return content === undefined ? "Error: GPT-3 API call failed" : content;
   } else {
     return "Error: Failed to fetch messages";
   }
+}
+
+function createLogger(subdirectory: string, channelId: string) {
+  const dirPath = path.join("logs", subdirectory);
+  if (!existsSync(dirPath)) {
+    mkdirSync(dirPath, { recursive: true });
+  }
+  return pino(
+    {
+      level: "debug",
+      // transport: { target: "pino-pretty" },
+    },
+    destination(path.join(dirPath, `${channelId}.log`)),
+  );
 }
 
 async function replyWithGPTCompletion(interaction: CommandInteraction) {
@@ -92,7 +113,11 @@ async function replyWithGPTCompletion(interaction: CommandInteraction) {
     return "Error: Channel not found";
   } else {
     const messages = await interactionToMessages(interaction);
-    return await messagesToContent(messages);
+    const logger = createLogger(
+      "replyWithGPTCompletion",
+      interaction.channelId,
+    );
+    return await messagesToContent(messages, logger);
   }
 }
 
@@ -103,7 +128,8 @@ async function visualize(interaction: CommandInteraction) {
     messages = [];
   }
   messages.push({ role: "system", content: scenePrompt });
-  const scene = await messagesToContent(messages);
+  const logger = createLogger("visualize", interaction.channelId);
+  const scene = await messagesToContent(messages, logger);
   console.log("=================== Scene");
   console.log(scene);
 
@@ -152,7 +178,11 @@ async function diagram(interaction: CommandInteraction) {
   if (DEBUG) {
     completion = diagramPrompt.debugDigram;
   } else {
-    completion = await messagesToContent(messages);
+    const logger1 = createLogger(
+      path.join("diagram", "1"),
+      interaction.channelId,
+    );
+    completion = await messagesToContent(messages, logger1);
     console.log("=================== Initial response");
     console.log(completion);
     const initialResponse: ChatCompletionRequestMessage = {
@@ -164,7 +194,11 @@ async function diagram(interaction: CommandInteraction) {
       content: diagramPrompt.codeInstruction,
     };
     messages = messages.concat([initialResponse]).concat([codeInstructions]);
-    completion = await messagesToContent(messages);
+    const logger2 = createLogger(
+      path.join("diagram", "2"),
+      interaction.channelId,
+    );
+    completion = await messagesToContent(messages, logger2);
   }
   console.log("=================== Code reponse");
   console.log(completion);
