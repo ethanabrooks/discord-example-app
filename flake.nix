@@ -23,8 +23,10 @@
           nodejs_20
           ngrok
           yarn
+          libuuid
         ];
         PYTHONBREAKPOINT = "ipdb.set_trace";
+        LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.libuuid];
         shellHook = ''
           set -o allexport
           source .env
