@@ -5,12 +5,12 @@ import {
   ButtonStyle,
   EmbedBuilder,
   CommandInteraction,
+  AttachmentBuilder,
 } from "discord.js";
 import { createChatCompletionWithBackoff, openai } from "./gpt.js";
 import { ChatCompletionRequestMessage } from "openai";
 import scenePrompt from "./scenePrompt.js";
 import * as diagramPrompt from "./diagramPrompts.js";
-import { getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import { initializeApp } from "firebase/app";
 import { createCanvas } from "canvas";
 
@@ -164,18 +164,6 @@ async function visualize(interaction: CommandInteraction) {
   }
 }
 
-const storage = getStorage(
-  initializeApp({
-    apiKey: process.env.FIREBASE_API_KEY,
-    authDomain: "game-bot-9e914.firebaseapp.com",
-    projectId: "game-bot-9e914",
-    storageBucket: "game-bot-9e914.appspot.com",
-    messagingSenderId: "1004411272440",
-    appId: "1:1004411272440:web:aaffad4fc33f94171e0f0d",
-    measurementId: "G-JQ7CDWW1S5",
-  }),
-);
-
 async function diagram(interaction: CommandInteraction) {
   let messages = await interactionToMessages(interaction);
   if (messages instanceof Object) {
@@ -189,14 +177,76 @@ async function diagram(interaction: CommandInteraction) {
     };
     messages = [introduction].concat(messages).concat([instructions]);
   }
-  const completion = await messagesToContent(messages);
+  const completion = `
+  \`\`\`javascript
+const canvas = createCanvas(500, 500);
+const context = canvas.getContext('2d');
+
+// Draw the medieval village layout
+// Village center
+context.beginPath();
+context.arc(250, 250, 5, 0, Math.PI * 2, true);
+context.fillStyle = '#000000'; // Village center in black
+context.fill();
+context.fillStyle = '#000000'; // Text color
+context.fillText('Village Center', 260, 250); // Positioning text can be adjusted as needed
+
+// Houses
+const houseCoordinates = [
+    {x: 200, y: 200, width: 50, height: 50},
+    {x: 300, y: 200, width: 50, height: 50},
+    {x: 200, y: 300, width: 50, height: 50},
+    {x: 300, y: 300, width: 50, height: 50}
+];
+houseCoordinates.forEach((coords, index) => {
+    context.fillStyle = '#A52A2A'; // Houses in brown
+    context.fillRect(coords.x, coords.y, coords.width, coords.height);
+    context.fillStyle = '#000000'; // Text color
+    context.fillText(\`House \$\{index + 1\}\`, coords.x + 10, coords.y + 30); // Positioning text can be adjusted as needed
+});
+
+// Streets
+context.beginPath();
+context.moveTo(225, 200);
+context.lineTo(275, 200);
+context.lineTo(275, 350);
+context.lineTo(225, 350);
+context.closePath();
+context.strokeStyle = '#000000'; // Streets in black
+context.lineWidth = 2;
+context.stroke();
+
+// Well
+context.beginPath();
+context.arc(250, 275, 10, 0, Math.PI * 2, true);
+context.fillStyle = '#0000FF'; // Well in blue
+context.fill();
+context.fillStyle = '#000000'; // Text color
+context.fillText('Well', 240, 280); // Positioning text can be adjusted as needed
+
+// Market stall
+context.fillStyle = '#FFFF00'; // Market stall in yellow
+context.fillRect(275, 275, 25, 25);
+context.fillStyle = '#000000'; // Text color
+context.fillText('Market Stall', 280, 300); // Positioning text can be adjusted as needed
+
+// Church
+context.fillStyle = '#FFFFFF'; // Church in white
+context.fillRect(225, 150, 100, 50);
+context.fillStyle = '#000000'; // Text color
+context.fillText('Church', 240, 180); // Positioning text can be adjusted as needed
+\`\`\`
+
+This code will generate a diagram of a medieval village layout with houses, streets, a well, a market stall, and a church. The positions and sizes of the objects can be adjusted as needed.
+  `;
+  // await messagesToContent(messages);
   console.log("=================== Completion");
   console.log(completion);
 
   const regex = /```javascript([\s\S]*?)```/g;
 
   let match: RegExpExecArray;
-  let buffer: Blob | Uint8Array | ArrayBuffer;
+  let buffer: Buffer;
   let code = "";
   while ((match = regex.exec(completion)) !== null) {
     code = match[1];
@@ -210,16 +260,17 @@ async function diagram(interaction: CommandInteraction) {
   console.log("buffer", buffer);
   console.log("====================================");
 
-  const uniqueName = `image-${Date.now()}`;
-  const storageRef = ref(storage, uniqueName);
+  // Add attached image
+  const name = "diagram.png";
+  const file = new AttachmentBuilder(buffer, { name });
+  const exampleEmbed = new EmbedBuilder()
+    .setTitle("Test Image")
+    .setImage(`attachment://${name}`);
 
-  await uploadBytes(storageRef, buffer);
-
-  const url = await getDownloadURL(storageRef);
-  await replyWithImage({
-    interaction,
-    url,
-    description: "A topdown view of the scene.",
+  // Send image
+  await interaction.channel.send({
+    embeds: [exampleEmbed],
+    files: [file],
   });
 }
 
