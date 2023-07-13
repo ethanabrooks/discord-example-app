@@ -1,5 +1,4 @@
 import "dotenv/config";
-import * as fs from "fs";
 // Require the necessary discord.js classes
 import {
   ApplicationCommand,
