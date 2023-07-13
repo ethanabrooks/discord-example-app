@@ -91,19 +91,18 @@ function getApproxMessageLength(model: string): number {
   }
 }
 
-function concatMaybeStrings(
-  string1: string | undefined,
-  string2: string | undefined,
-) {
-  if (string1 === undefined && string2 === undefined) {
-    return undefined;
-  } else if (string1 === undefined) {
-    return string2;
-  } else if (string2 === undefined) {
-    return string1;
-  } else {
-    return string1 + string2;
-  }
+function concatMaybeStrings(...strings: (string | undefined)[]) {
+  return strings.reduce((string1, string2) => {
+    if (string1 === undefined && string2 === undefined) {
+      return undefined;
+    } else if (string1 === undefined) {
+      return string2;
+    } else if (string2 === undefined) {
+      return string1;
+    } else {
+      return string1 + string2;
+    }
+  }, "");
 }
 
 // Takes two arrays of messages and concatenates them.
@@ -128,6 +127,7 @@ function concatMessages(
         role: messages1Last.role,
         content: concatMaybeStrings(
           messages1Last.content,
+          "\n",
           messages2Head.content,
         ),
       },
