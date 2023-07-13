@@ -80,10 +80,92 @@ async function replyWithGPTCompletion(interaction: CommandInteraction) {
   return content;
 }
 
-type Options = {
-  firstReply?: boolean;
-  text?: string | null;
-};
+async function handleInteraction({
+  firstReply,
+  interaction,
+  text,
+}: {
+  firstReply: boolean;
+  interaction: CommandInteraction;
+  text: string;
+}) {
+  const [content, excess] = splitAtResponseLimit(text);
+  const row = Object.values(buttons)
+    .filter(({ id }) => excess.length > 0 || id !== buttons.reveal.id)
+    .map(({ id, label, style }: ButtonComponents) =>
+      new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style),
+    )
+    .reduce(
+      (row, button) => row.addComponents(button),
+      new ActionRowBuilder<ButtonBuilder>(),
+    );
+
+  const reply = { content, components: [row] };
+
+  // Update reply
+  const response = await (firstReply
+    ? interaction.followUp(reply)
+    : interaction.channel.send(reply));
+
+  // Button interaction
+  try {
+    const confirmation = await response.awaitMessageComponent();
+    async function achknowledgeAndremoveButtons() {
+      await confirmation.update({ ...reply, components: [] });
+    }
+
+    // Send new message
+    switch (confirmation.customId) {
+      case buttons.reveal.id:
+        await achknowledgeAndremoveButtons();
+        await handleInteraction({
+          text: excess,
+          interaction,
+          firstReply,
+        });
+        break;
+      case buttons.submit.id:
+        await achknowledgeAndremoveButtons();
+        await handleInteraction({
+          firstReply: false,
+          interaction,
+          text: await replyWithGPTCompletion(interaction),
+        });
+        break;
+      case buttons.visualize.id:
+        // Add attached image
+        const file = new AttachmentBuilder("test.png");
+        const exampleEmbed = new EmbedBuilder()
+          .setTitle("Test Image")
+          .setImage("attachment://test.png");
+
+        // Send image
+        await interaction.channel.send({
+          embeds: [exampleEmbed],
+          files: [file],
+        });
+
+        // Clear
+        await achknowledgeAndremoveButtons();
+        await handleInteraction({
+          interaction,
+          firstReply: false,
+          text: "Behold the visualization!",
+        });
+        break;
+      default:
+        console.log("Cannot use button " + confirmation.customId);
+    }
+
+    // Timeout
+  } catch (e) {
+    console.log(e);
+    await response.edit({
+      content: `${e}`,
+      components: [],
+    });
+  }
+}
 
 // Create commands
 export const Commands = [
@@ -91,88 +173,14 @@ export const Commands = [
     data: new SlashCommandBuilder()
       .setName("g")
       .setDescription("Query GPT with recent chat history"),
-    async execute(
-      interaction: CommandInteraction,
-      { firstReply = true, text = null }: Options = {},
-    ) {
-      if (firstReply) {
-        await interaction.deferReply();
-      }
-
-      if (text === null) {
-        text = await replyWithGPTCompletion(interaction);
-      }
-
-      const [content, excess] = splitAtResponseLimit(text);
-      const row = Object.values(buttons)
-        .filter(({ id }) => excess.length > 0 || id !== buttons.reveal.id)
-        .map(({ id, label, style }: ButtonComponents) =>
-          new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style),
-        )
-        .reduce(
-          (row, button) => row.addComponents(button),
-          new ActionRowBuilder<ButtonBuilder>(),
-        );
-
-      const reply = { content, components: [row] };
-
-      // Update reply
-      const response = await (firstReply
-        ? interaction.followUp(reply)
-        : interaction.channel.send(reply));
-
-      // Button interaction
-      try {
-        const confirmation = await response.awaitMessageComponent();
-        async function achknowledgeAndremoveButtons() {
-          await confirmation.update({ ...reply, components: [] });
-        }
-
-        // Send new message
-        switch (confirmation.customId) {
-          case buttons.reveal.id:
-            await achknowledgeAndremoveButtons();
-            await this.execute(interaction, {
-              firstReply: false,
-              text: excess,
-            });
-            break;
-          case buttons.submit.id:
-            await achknowledgeAndremoveButtons();
-            await this.execute(interaction, { firstReply: false });
-            break;
-          case buttons.visualize.id:
-            // Add attached image
-            const file = new AttachmentBuilder("test.png");
-            const exampleEmbed = new EmbedBuilder()
-              .setTitle("Test Image")
-              .setImage("attachment://test.png");
-
-            // Send image
-            await interaction.channel.send({
-              embeds: [exampleEmbed],
-              files: [file],
-            });
-
-            // Clear
-            await achknowledgeAndremoveButtons();
-            await this.execute(interaction, {
-              firstReply: false,
-              content: "Behold the visualization!",
-            });
-            break;
-          default:
-            console.log("Cannot use button " + confirmation.customId);
-        }
-
-        // Timeout
-      } catch (e) {
-        console.log(e);
-        await response.edit({
-          content: `${e}`,
-          components: [],
-        });
-      }
+    async execute(interaction: CommandInteraction) {
+      await interaction.deferReply();
+      const text = await replyWithGPTCompletion(interaction);
+      await handleInteraction({
+        firstReply: true,
+        interaction,
+        text,
+      });
     },
   },
 ];
