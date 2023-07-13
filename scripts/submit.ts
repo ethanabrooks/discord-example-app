@@ -8,10 +8,7 @@ export default async function submit(interaction: CommandInteraction) {
     return "Error: Channel not found";
   } else {
     const messages = await interactionToMessages(interaction);
-    const logger = createLogger(
-      "replyWithGPTCompletion",
-      interaction.channelId,
-    );
+    const logger = createLogger("submit", interaction.channelId);
     return await messagesToContent(messages, logger);
   }
 }
