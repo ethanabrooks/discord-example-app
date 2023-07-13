@@ -44,52 +44,49 @@ async function handleInteraction({
   const response = await (firstReply
     ? interaction.followUp(reply)
     : interaction.channel.send(reply));
-
-  // Button interaction
-  try {
-    const confirmation = await response.awaitMessageComponent();
-    async function achknowledgeAndremoveButtons() {
-      await confirmation.update({ ...reply, components: [] });
-    }
-
-    // Send new message
-    switch (confirmation.customId) {
-      case buttons.reveal.id:
-        await achknowledgeAndremoveButtons();
-        await handleInteraction({
-          text: excess,
-          interaction,
-          firstReply,
-        });
-        break;
-      case buttons.submit.id:
-        await achknowledgeAndremoveButtons();
-        await handleInteraction({
-          firstReply: false,
-          interaction,
-          text: await submit(interaction),
-        });
-        break;
-      case buttons.visualize.id:
-        await achknowledgeAndremoveButtons();
-        await visualize(interaction);
-        break;
-      case buttons.diagram.id:
-        await achknowledgeAndremoveButtons();
-        await diagram(interaction);
-        break;
-      default:
-        console.log("Cannot use button " + confirmation.customId);
-    }
-
-    // Timeout
-  } catch (e) {
-    console.log(e);
-    await response.edit({
-      content: `${e}`,
-      components: [],
+  await response
+    .awaitMessageComponent()
+    .then(async (buttonInteraction) => {
+      async function achknowledgeAndremoveButtons() {
+        await buttonInteraction.update({ ...reply, components: [] });
+      }
+      // Send new message
+      switch (buttonInteraction.customId) {
+        case buttons.reveal.id:
+          achknowledgeAndremoveButtons();
+          handleInteraction({
+            text: excess,
+            interaction,
+            firstReply,
+          });
+          break;
+        case buttons.submit.id:
+          await achknowledgeAndremoveButtons();
+          await handleInteraction({
+            firstReply: false,
+            interaction,
+            text: await submit(interaction),
+          });
+          break;
+        case buttons.visualize.id:
+          await achknowledgeAndremoveButtons();
+          await visualize(interaction);
+          break;
+        case buttons.diagram.id:
+          await achknowledgeAndremoveButtons();
+          await diagram(interaction);
+          break;
+        default:
+          console.log("Cannot use button " + buttonInteraction.customId);
+      }
+    })
+    .catch(async (e) => {
+      console.log(e);
+      await response.edit({
+        content: `${e}`,
+        components: [],
+      });
     });
-  }
 }
 
 // Create commands
