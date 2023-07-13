@@ -13,8 +13,6 @@ export default async function visualize(interaction: CommandInteraction) {
   messages.push({ role: "system", content: scenePrompt });
   const logger = createLogger("visualize", interaction.channelId);
   const scene = await messagesToContent(messages, logger);
-  console.log("=================== Scene");
-  console.log(scene);
 
   let response: any | null = null;
   try {

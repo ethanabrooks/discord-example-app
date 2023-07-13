@@ -35,8 +35,6 @@ export default async function diagram(interaction: CommandInteraction) {
       interaction.channelId,
     );
     completion = await messagesToContent(messages, logger1);
-    console.log("=================== Initial response");
-    console.log(completion);
     const initialResponse: ChatCompletionRequestMessage = {
       role: "system",
       content: completion,
@@ -52,14 +50,11 @@ export default async function diagram(interaction: CommandInteraction) {
     );
     completion = await messagesToContent(messages, logger2);
   }
-  console.log("=================== Code reponse");
-  console.log(completion);
   let code: string = completion;
   const startString = "```javascript";
   let startIndex = completion.indexOf(startString);
   let endIndex = completion.indexOf("```", startIndex + 1);
   startIndex = startIndex === -1 ? 0 : startIndex + startString.length;
-  console.log("Start index: " + startIndex, "End index: " + endIndex);
 
   // remove everything before and including '```javascript'
   code = code.slice(startIndex, endIndex);
@@ -73,8 +68,6 @@ export default async function diagram(interaction: CommandInteraction) {
       [],
     )
     .join("\n");
-  console.log("================== Code");
-  console.log(code);
   let buffer: Buffer;
 
   // keep dropping final line until no error
