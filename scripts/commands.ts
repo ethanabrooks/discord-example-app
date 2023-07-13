@@ -137,7 +137,9 @@ async function handleInteraction({
         const file = new AttachmentBuilder("test.png");
         const exampleEmbed = new EmbedBuilder()
           .setTitle("Test Image")
-          .setImage("attachment://test.png");
+          .setImage(
+            "https://th.bing.com/th/id/OIP.9M2bzzvmjOKDJmpq0UGZ2gHaFE?pid=ImgDet&rs=1",
+          );
 
         // Send image
         await interaction.channel.send({
