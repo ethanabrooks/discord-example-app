@@ -213,4 +213,13 @@ export const Commands = [
       });
     },
   },
+  {
+    data: new SlashCommandBuilder()
+      .setName("visualize")
+      .setDescription("Visualize recent chat history as a scene"),
+    async execute(interaction: CommandInteraction) {
+      await interaction.deferReply();
+      await visualize(interaction);
+    },
+  },
 ];
