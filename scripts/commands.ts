@@ -47,9 +47,25 @@ async function handleInteraction({
   }
 
   // Update reply
-  const response = await (firstReply
-    ? interaction.followUp(reply)
-    : channel.send(reply));
+  let response;
+  try {
+    response = await (firstReply
+      ? interaction.followUp(reply)
+      : channel.send(reply));
+  } catch (e) {
+    console.log(e);
+    console.log("firstReply:", firstReply);
+    try {
+      console.log(`Trying again with firstReply = ${!firstReply}`);
+      response = await (!firstReply
+        ? interaction.followUp(reply)
+        : channel.send(reply));
+    } catch (e) {
+      console.log(e);
+      console.log("Giving up");
+      return;
+    }
+  }
   await response
     .awaitMessageComponent()
     .then(async (buttonInteraction) => {
