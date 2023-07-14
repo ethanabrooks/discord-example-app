@@ -11,7 +11,6 @@ import {
 } from "@dqbd/tiktoken";
 import text from "./prompts.js";
 import { Logger } from "pino";
-import { CommandInteractionOptionResolver } from "discord.js";
 
 const MODEL: TiktokenModel = "gpt-3.5-turbo-0301";
 export const DEBUG = false;
