@@ -290,9 +290,6 @@ export async function createChatCompletionWithBackoff({
   model?: TiktokenModel;
   logger?: Logger | null;
 }): Promise<string | undefined> {
-  if (DEBUG) {
-    return text;
-  }
   const length = messagesLength(messages);
   const [discard, truncated] = truncateMessagesAtNumCharacters(
     messages,
@@ -305,15 +302,21 @@ export async function createChatCompletionWithBackoff({
     if (logger != null) {
       logger.debug({ messages });
     }
-    const completion = await openai.createChatCompletion({
-      model: "gpt-3.5-turbo",
-      messages: messages,
-      stop: stopWord,
-      temperature: 1,
-      max_tokens: 1000,
-      top_p: 0.5,
-    });
-    const content = completion.data.choices[0].message?.content;
+    let content: string | undefined;
+    if (DEBUG) {
+      content = text;
+    } else {
+      const completion = await openai.createChatCompletion({
+        model: "gpt-3.5-turbo",
+        messages: messages,
+        stop: stopWord,
+        temperature: 1,
+        max_tokens: 1000,
+        top_p: 0.5,
+      });
+      const [choice] = completion.data.choices;
+      content = choice.message?.content;
+    }
     if (logger != null) {
       logger.debug({
         messages,
