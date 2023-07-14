@@ -9,7 +9,7 @@ import {
   encoding_for_model,
   TiktokenModel,
 } from "@dqbd/tiktoken";
-import text from "./prompts.js";
+import text from "./prompts/debug.js";
 import { Logger } from "pino";
 
 const MODEL: TiktokenModel = "gpt-3.5-turbo-0301";
