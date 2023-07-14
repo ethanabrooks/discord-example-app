@@ -71,7 +71,8 @@ async function handleInteraction({
     .awaitMessageComponent()
     .then(async (buttonInteraction: ButtonInteraction) => {
       async function acknowledgeAndremoveButtons() {
-        const content = reply.content.length > 0 ? reply.content : " "; // this is necessary because of an annoying error that gets thrown when you try to update a message with no content
+        const content =
+          reply.content.length > 0 ? reply.content : "Content was empty"; // this is necessary because of an annoying error that gets thrown when you try to update a message with no content
         await buttonInteraction.update({ content, components: [] });
       }
       // Send new message

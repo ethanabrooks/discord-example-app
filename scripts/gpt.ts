@@ -373,8 +373,10 @@ export async function createChatCompletionWithBackoff({
     model,
     limit: getMaxTokens(model),
   }).map(indexedToChatCompletionRequestMessage);
-  console.log("Messages tokens:", numTokensFromMessages(inputMessages, model));
-  console.log("Messages characters:", messagesLength(inputMessages));
+  const numTokens = numTokensFromMessages(inputMessages, model);
+  const numCharacters = messagesLength(inputMessages);
+  console.log("Messages tokens:", numTokens);
+  console.log("Messages characters:", numCharacters);
   try {
     if (logger != null) {
       logger.debug({ inputMessages });
@@ -395,6 +397,11 @@ export async function createChatCompletionWithBackoff({
       });
       const [choice] = completion.data.choices;
       content = choice.message?.content;
+    }
+    if (content == null) {
+      return `GPT-3 returned no content in reponse to ${numCharacters} characters of input.`;
+    } else if (content.length == 0) {
+      return `GPT-3 returned empty content in reponse to ${numCharacters} characters of input.`;
     }
     console.log("completion");
     console.log(content);
