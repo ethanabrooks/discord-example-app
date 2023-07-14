@@ -4,6 +4,12 @@ import {
   ButtonBuilder,
   CommandInteraction,
   ButtonInteraction,
+  BufferResolvable,
+  JSONEncodable,
+  APIAttachment,
+  Attachment,
+  AttachmentBuilder,
+  AttachmentPayload,
 } from "discord.js";
 import { ButtonComponents, buttons } from "./buttons.js";
 import submit from "./commands/submit.js";
@@ -12,6 +18,7 @@ import diagram from "./commands/diagram.js";
 import { interactionToMessages } from "./utils/messages.js";
 import exportMessages from "./commands/export.js";
 import sendToChannel from "./commands/sendToChannel.js";
+import { Stream } from "form-data";
 
 const BUILT_IN_RESPONSE_LIMIT = 2000;
 
@@ -26,10 +33,19 @@ async function handleInteraction({
   firstReply,
   interaction,
   text,
+  files = [],
 }: {
   firstReply: boolean;
   interaction: CommandInteraction;
   text: string;
+  files?: (
+    | BufferResolvable
+    | Stream
+    | JSONEncodable<APIAttachment>
+    | Attachment
+    | AttachmentBuilder
+    | AttachmentPayload
+  )[];
 }) {
   const [content, excess] = splitAtResponseLimit(text);
   const row = Object.values(buttons)
@@ -42,7 +58,8 @@ async function handleInteraction({
       new ActionRowBuilder<ButtonBuilder>(),
     );
 
-  const reply = { content, components: [row] };
+  console.log("files", files);
+  const reply = { content, components: [row], files };
   const channel = interaction.channel;
   if (channel == null) {
     console.log("Cannot send message to null channel");
@@ -75,7 +92,10 @@ async function handleInteraction({
       async function acknowledgeAndremoveButtons() {
         const content =
           reply.content.length > 0 ? reply.content : "Content was empty"; // this is necessary because of an annoying error that gets thrown when you try to update a message with no content
-        await buttonInteraction.update({ content, components: [] });
+        await buttonInteraction.update({
+          content,
+          components: [],
+        });
       }
       // Send new message
       switch (buttonInteraction.customId) {
@@ -157,11 +177,12 @@ export const Commands = [
       .setDescription("Export messages to hastebin"),
     async execute(interaction: CommandInteraction) {
       await interaction.deferReply();
-      const text = await exportMessages(interaction);
+      const { text, files } = await exportMessages(interaction);
       await handleInteraction({
         firstReply: true,
         interaction,
         text,
+        files,
       });
     },
   },
