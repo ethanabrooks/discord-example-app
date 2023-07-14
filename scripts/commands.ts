@@ -11,6 +11,7 @@ import visualize from "./commands/visualize.js";
 import diagram from "./commands/diagram.js";
 import { interactionToMessages } from "./utils/messages.js";
 import exportMessages from "./commands/export.js";
+import sendToChannel from "./commands/sendToChannel.js";
 
 const BUILT_IN_RESPONSE_LIMIT = 2000;
 
@@ -157,6 +158,35 @@ export const Commands = [
     async execute(interaction: CommandInteraction) {
       await interaction.deferReply();
       const text = await exportMessages(interaction);
+      await handleInteraction({
+        firstReply: true,
+        interaction,
+        text,
+      });
+    },
+  },
+  {
+    data: new SlashCommandBuilder()
+      .setName("sendmessage")
+      .setDescription("Send message to channel")
+      .addStringOption((option) =>
+        option
+          .setName("message")
+          .setDescription("Message to send")
+          .setRequired(true),
+      )
+      .addStringOption((option) =>
+        option
+          .setName("channel")
+          .setDescription("ID of destination channel")
+          .setRequired(true),
+      ),
+    async execute(interaction: CommandInteraction) {
+      await interaction.deferReply();
+
+      const text = interaction.isChatInputCommand()
+        ? await sendToChannel(interaction)
+        : `Incompatible interaction: ${typeof interaction}`;
       await handleInteraction({
         firstReply: true,
         interaction,
