@@ -77,9 +77,10 @@ async function getCCRMessages(
     await Promise.all(attachmentMessagePromises)
   ).flat();
 
+  const content = `${message.author.username}: ${message.content}`
   const mainMessage: ChatCompletionRequestMessage = {
     role: getRole(message.author?.id),
-    content: message.content,
+    content
   };
   return attachmentMessages.concat([mainMessage]);
 }
