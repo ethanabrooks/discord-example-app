@@ -221,7 +221,7 @@ function truncateMessagesAtNumCharacters(
         };
       } else {
         throw new Error(
-          `Case not covered: characterCount: ${characterCount}, halfCharacters: ${numCharacters}, newCount: ${newCount}`,
+          `Case not covered: characterCount: ${characterCount}, numCharacters: ${numCharacters}, newCount: ${newCount}`,
         );
       }
     },

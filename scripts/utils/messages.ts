@@ -15,33 +15,57 @@ function getRole(id: string | undefined) {
   return id === clientId ? "system" : "user";
 }
 
-function getAttachmentContents(attachment: Attachment) {
-  console.log("contentType", attachment.contentType);
-  return get(attachment.url)
-    .then((response): string[] =>
-      attachment.contentType.startsWith("text") ? [response.data] : [],
-    )
-    .catch((error): string[] => {
-      console.error("Error: " + error.message);
-      return [];
-    });
-}
+function isCCRMessage(obj: any): obj is ChatCompletionRequestMessage {
+  if (!obj) {
+    return false;
+  }
 
-function getCCRMessage(id: string) {
-  return (content: string): ChatCompletionRequestMessage => {
-    return {
-      role: getRole(id),
-      content,
-    };
-  };
+  switch (typeof obj.content) {
+    case "string":
+    case "undefined":
+      break;
+    default:
+      return false;
+  }
+
+  switch (obj.role) {
+    case "system":
+    case "user":
+    case "assistant":
+    case "function":
+      return true;
+    default:
+      return false;
+  }
 }
 
 async function getAttachmentCCRMessages(
   attachment,
   message,
 ): Promise<ChatCompletionRequestMessage[]> {
-  const contents: Promise<string[]> = getAttachmentContents(attachment);
-  return (await contents).map(getCCRMessage(message.author?.id));
+  const contents: Promise<ChatCompletionRequestMessage[]> = get(attachment.url)
+    .then((response): ChatCompletionRequestMessage[] => {
+      if (attachment.contentType?.startsWith("text")) {
+        const data = response.data;
+
+        if (Array.isArray(data) && data.every(isCCRMessage)) {
+          return data;
+        }
+        const ccrMessage: ChatCompletionRequestMessage = {
+          role: getRole(message.author?.id),
+          content: data instanceof Object ? JSON.stringify(data) : data,
+        };
+
+        return [ccrMessage];
+      } else {
+        return [];
+      }
+    })
+    .catch((error): ChatCompletionRequestMessage[] => {
+      console.error("Error: " + error.message);
+      return [];
+    });
+  return await contents;
 }
 
 async function getCCRMessages(
