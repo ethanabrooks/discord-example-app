@@ -3,6 +3,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   CommandInteraction,
+  ButtonInteraction,
 } from "discord.js";
 import { ButtonComponents, buttons } from "./buttons.js";
 import submit from "./submit.js";
@@ -68,9 +69,10 @@ async function handleInteraction({
   }
   await response
     .awaitMessageComponent()
-    .then(async (buttonInteraction) => {
+    .then(async (buttonInteraction: ButtonInteraction) => {
       async function acknowledgeAndremoveButtons() {
-        await buttonInteraction.update({ ...reply, components: [] });
+        const content = reply.content.length > 0 ? reply.content : " "; // this is necessary because of an annoying error that gets thrown when you try to update a message with no content
+        await buttonInteraction.update({ content, components: [] });
       }
       // Send new message
       switch (buttonInteraction.customId) {
