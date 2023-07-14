@@ -1,4 +1,9 @@
-import { ChatCompletionRequestMessage, Configuration, OpenAIApi } from "openai";
+import {
+  ChatCompletionRequestMessage,
+  ChatCompletionRequestMessageRoleEnum,
+  Configuration,
+  OpenAIApi,
+} from "openai";
 import {
   get_encoding,
   encoding_for_model,
@@ -6,9 +11,16 @@ import {
 } from "@dqbd/tiktoken";
 import text from "./prompts.js";
 import { Logger } from "pino";
+import { CommandInteractionOptionResolver } from "discord.js";
 
 const MODEL: TiktokenModel = "gpt-3.5-turbo-0301";
 export const DEBUG = false;
+
+type IndexedMessage = {
+  role: ChatCompletionRequestMessageRoleEnum;
+  content: string | undefined;
+  index: number;
+};
 
 function numTokensFromMessages(
   messages: ChatCompletionRequestMessage[],
@@ -105,35 +117,47 @@ function concatMaybeStrings(...strings: (string | undefined)[]) {
   }, "");
 }
 
+function getIndices(messages: IndexedMessage[]) {
+  return messages.map((message) => message.index);
+}
+
 // Takes two arrays of messages and concatenates them.
 // If the last message of the first array and the first message of the second array have the same role
 // merge their contents into a single message.
 function concatMessages(
-  messages1: ChatCompletionRequestMessage[],
-  messages2: ChatCompletionRequestMessage[],
+  messages1: IndexedMessage[],
+  messages2: IndexedMessage[],
 ) {
   if (messages1.length === 0) {
     return messages2;
   } else if (messages2.length === 0) {
     return messages1;
   }
+  const indices = getIndices(messages1).concat(getIndices(messages2));
+  if (!isContiguous(indices)) {
+    throw new Error(`Messages are not contiguous: ${indices}`);
+  }
   const messages1Last = messages1[messages1.length - 1];
   messages1 = messages1.slice(0, -1);
   const [messages2Head, ...messages2Tail] = messages2;
-  let middleMessages: ChatCompletionRequestMessage[];
-  if (messages1Last.role === messages2Head.role) {
+  let middleMessages: IndexedMessage[];
+  if (messages1Last.index === messages2Head.index) {
     middleMessages = [
       {
         role: messages1Last.role,
         content: concatMaybeStrings(
           messages1Last.content,
-          "\n",
           messages2Head.content,
         ),
+        index: messages1Last.index,
       },
     ];
-  } else {
+  } else if (messages1Last.index + 1 === messages2Head.index) {
     middleMessages = [messages1Last, messages2Head];
+  } else {
+    throw new Error(
+      `Messages are not contiguous: ${messages1Last.index} and ${messages2Head.index}`,
+    );
   }
   return messages1.concat(middleMessages).concat(messages2Tail);
 }
@@ -143,7 +167,7 @@ function maybeStringLength(maybeString: string | undefined) {
 }
 
 function truncateMessagesAtNumCharacters(
-  messages: ChatCompletionRequestMessage[],
+  messages: IndexedMessage[],
   numCharacters: number,
 ) {
   const { half } = messages.reduce(
@@ -169,18 +193,18 @@ function truncateMessagesAtNumCharacters(
           },
           characterCount: newCount,
         };
-      } else if (characterCount < numCharacters && newCount == numCharacters) {
+      } else if (newCount == numCharacters) {
         return {
           half: {
             ...half,
             first: concatMessages(half.first, [
               {
                 ...message,
-                content: message.content?.slice(0, length),
+                content: message.content,
               },
             ]),
           },
-          characterCount: characterCount + length,
+          characterCount: newCount,
         };
       } else if (characterCount === numCharacters) {
         return {
@@ -203,8 +227,8 @@ function truncateMessagesAtNumCharacters(
     },
     {
       half: {
-        first: [] as ChatCompletionRequestMessage[],
-        second: [] as ChatCompletionRequestMessage[],
+        first: [] as IndexedMessage[],
+        second: [] as IndexedMessage[],
       },
       characterCount: 0,
     },
@@ -213,7 +237,7 @@ function truncateMessagesAtNumCharacters(
 }
 
 // Divide a messages list into two halves with equal characters per half.
-function bisectMessages(messages: ChatCompletionRequestMessage[]) {
+function bisectMessages(messages: IndexedMessage[]) {
   // Calculate the total number of characters in all messages.
   let totalCharacters = messages.reduce(
     (total, message) => total + maybeStringLength(message.content),
@@ -231,15 +255,53 @@ function messagesLength(messages: ChatCompletionRequestMessage[]) {
   );
 }
 
+function indexedToChatCompletionRequestMessage({
+  role,
+  content,
+}: IndexedMessage): ChatCompletionRequestMessage {
+  return { role, content };
+}
+
+function isContiguous(arr) {
+  // First, sort the array
+  arr.sort((a, b) => a - b);
+  const [head, ...tail] = arr;
+  const { isContiguous } = tail.reduce(
+    ({ prev, isContiguous }, next) => ({
+      isContiguous: isContiguous && prev <= next && next <= prev + 1,
+      prev: next,
+    }),
+    { prev: head, isContiguous: true },
+  );
+  return isContiguous;
+}
+
+if (!isContiguous([1, 2, 3, 3, 4, 5])) {
+  throw new Error("isContiguous failed");
+}
+
 // Retain the last portion of messages that has tokens roughly equal to limit.
-function truncateMessages(
-  messages: ChatCompletionRequestMessage[],
-  model: TiktokenModel,
-  limit: number,
-  discard: ChatCompletionRequestMessage[] = [],
-) {
+function truncateMessages({
+  messages,
+  model,
+  limit,
+  discard,
+}: {
+  messages: IndexedMessage[];
+  model: TiktokenModel;
+  limit: number;
+  discard: IndexedMessage[];
+}) {
+  const indices = getIndices(messages);
+  if (!isContiguous(indices)) {
+    throw new Error(`Messages are not contiguous: ${indices}`);
+  }
+
   limit = Math.round(limit);
-  const numTokens = numTokensFromMessages(messages, model);
+  const numTokens = numTokensFromMessages(
+    messages.map(indexedToChatCompletionRequestMessage),
+    model,
+  );
   const excess = numTokens - limit;
   console.log(
     "numTokens: " + numTokens,
@@ -254,18 +316,21 @@ function truncateMessages(
   if (excess < 0) {
     // If we are below the limit
     const remainder = -excess;
-    return concatMessages(
-      messages,
-      truncateMessages(discard, model, remainder, []), // append truncated discard
-    );
+    const truncated = truncateMessages({
+      discard: [],
+      messages: discard,
+      model,
+      limit: remainder,
+    });
+    return concatMessages(truncated, messages);
   } else if (excess > 0) {
     const [firstHalf, secondHalf] = bisectMessages(messages);
-    return truncateMessages(
-      secondHalf,
+    return truncateMessages({
+      discard: firstHalf, // discard first half
+      messages: secondHalf,
       model,
       limit,
-      concatMessages(messages, firstHalf), // discard first half
-    );
+    });
   } else {
     return messages;
   }
@@ -291,24 +356,38 @@ export async function createChatCompletionWithBackoff({
   logger?: Logger | null;
 }): Promise<string | undefined> {
   const length = messagesLength(messages);
+  const indexedMessages = messages.map(
+    (message, index): IndexedMessage => ({
+      content: message.content,
+      role: message.role,
+      index,
+    }),
+  );
   const [discard, truncated] = truncateMessagesAtNumCharacters(
-    messages,
+    indexedMessages,
     length - getApproxMessageLength(model),
   );
-  messages = truncateMessages(truncated, model, getMaxTokens(model), discard);
-  console.log("Messages tokens:", numTokensFromMessages(messages, model));
-  console.log("Messages characters:", messagesLength(messages));
+  const inputMessages = truncateMessages({
+    discard,
+    messages: truncated,
+    model,
+    limit: getMaxTokens(model),
+  }).map(indexedToChatCompletionRequestMessage);
+  console.log("Messages tokens:", numTokensFromMessages(inputMessages, model));
+  console.log("Messages characters:", messagesLength(inputMessages));
   try {
     if (logger != null) {
-      logger.debug({ messages });
+      logger.debug({ inputMessages });
     }
+    console.log("messages");
+    console.log(messages);
     let content: string | undefined;
     if (DEBUG) {
       content = text;
     } else {
       const completion = await openai.createChatCompletion({
         model: "gpt-3.5-turbo",
-        messages: messages,
+        messages: inputMessages,
         stop: stopWord,
         temperature: 1,
         max_tokens: 1000,
@@ -317,9 +396,11 @@ export async function createChatCompletionWithBackoff({
       const [choice] = completion.data.choices;
       content = choice.message?.content;
     }
+    console.log("completion");
+    console.log(content);
     if (logger != null) {
       logger.debug({
-        messages,
+        messages: inputMessages,
         completion: content,
       });
     }
