@@ -1,8 +1,8 @@
 import { EmbedBuilder, CommandInteraction } from "discord.js";
-import { openai, DEBUG } from "./gpt.js";
-import scenePrompt from "./prompts/scene.js";
-import { interactionToMessages, messagesToContent } from "./utils/messages.js";
-import { createLogger } from "./utils/logger.js";
+import { openai, DEBUG } from "../gpt.js";
+import scenePrompt from "../prompts/scene.js";
+import { interactionToMessages, messagesToContent } from "../utils/messages.js";
+import { createLogger } from "../utils/logger.js";
 
 export default async function visualize(interaction: CommandInteraction) {
   // Add attached image

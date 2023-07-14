@@ -6,11 +6,11 @@ import {
   ButtonInteraction,
 } from "discord.js";
 import { ButtonComponents, buttons } from "./buttons.js";
-import submit from "./submit.js";
-import visualize from "./visualize.js";
-import diagram from "./diagram.js";
+import submit from "./commands/submit.js";
+import visualize from "./commands/visualize.js";
+import diagram from "./commands/diagram.js";
 import { interactionToMessages } from "./utils/messages.js";
-import exportMessages from "./export.js";
+import exportMessages from "./commands/export.js";
 
 const BUILT_IN_RESPONSE_LIMIT = 2000;
 

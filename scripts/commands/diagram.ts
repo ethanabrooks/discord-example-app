@@ -3,13 +3,13 @@ import {
   CommandInteraction,
   EmbedBuilder,
 } from "discord.js";
-import { interactionToMessages, messagesToContent } from "./utils/messages.js";
+import { interactionToMessages, messagesToContent } from "../utils/messages.js";
 import { ChatCompletionRequestMessage } from "openai";
-import * as diagramPrompt from "./prompts/diagram.js";
-import { DEBUG } from "./gpt.js";
+import * as diagramPrompt from "../prompts/diagram.js";
+import { DEBUG } from "../gpt.js";
 import path from "path";
 import { createCanvas } from "canvas";
-import { createLogger } from "./utils/logger.js";
+import { createLogger } from "../utils/logger.js";
 
 export default async function diagram(interaction: CommandInteraction) {
   let messages = await interactionToMessages(interaction);

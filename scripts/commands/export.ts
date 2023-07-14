@@ -1,4 +1,4 @@
-import { interactionToMessages } from "./utils/messages.js";
+import { interactionToMessages } from "../utils/messages.js";
 import axios from "axios";
 import FormData from "form-data";
 

@@ -1,6 +1,6 @@
 import { CommandInteraction } from "discord.js";
-import { interactionToMessages, messagesToContent } from "./utils/messages.js";
-import { createLogger } from "./utils/logger.js";
+import { interactionToMessages, messagesToContent } from "../utils/messages.js";
+import { createLogger } from "../utils/logger.js";
 
 export default async function submit(interaction: CommandInteraction) {
   const channel = interaction.channel;
