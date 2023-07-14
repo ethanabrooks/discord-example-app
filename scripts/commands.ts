@@ -69,13 +69,13 @@ async function handleInteraction({
   await response
     .awaitMessageComponent()
     .then(async (buttonInteraction) => {
-      async function achknowledgeAndremoveButtons() {
+      async function acknowledgeAndremoveButtons() {
         await buttonInteraction.update({ ...reply, components: [] });
       }
       // Send new message
       switch (buttonInteraction.customId) {
         case buttons.reveal.id:
-          achknowledgeAndremoveButtons();
+          acknowledgeAndremoveButtons();
           handleInteraction({
             text: excess,
             interaction,
@@ -83,7 +83,7 @@ async function handleInteraction({
           });
           break;
         case buttons.submit.id:
-          await achknowledgeAndremoveButtons();
+          await acknowledgeAndremoveButtons();
           await handleInteraction({
             firstReply: false,
             interaction,
@@ -91,11 +91,11 @@ async function handleInteraction({
           });
           break;
         case buttons.visualize.id:
-          await achknowledgeAndremoveButtons();
+          await acknowledgeAndremoveButtons();
           await visualize(interaction);
           break;
         case buttons.diagram.id:
-          await achknowledgeAndremoveButtons();
+          await acknowledgeAndremoveButtons();
           await diagram(interaction);
           break;
         default:
