@@ -10,6 +10,7 @@ import submit from "./submit.js";
 import visualize from "./visualize.js";
 import diagram from "./diagram.js";
 import { interactionToMessages } from "./utils/messages.js";
+import exportMessages from "./export.js";
 
 const BUILT_IN_RESPONSE_LIMIT = 2000;
 
@@ -147,6 +148,20 @@ export const Commands = [
     async execute(interaction: CommandInteraction) {
       await interaction.deferReply();
       await diagram(interaction);
+    },
+  },
+  {
+    data: new SlashCommandBuilder()
+      .setName("export")
+      .setDescription("Export messages to hastebin"),
+    async execute(interaction: CommandInteraction) {
+      await interaction.deferReply();
+      const text = await exportMessages(interaction);
+      await handleInteraction({
+        firstReply: true,
+        interaction,
+        text,
+      });
     },
   },
 ];
