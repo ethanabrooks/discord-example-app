@@ -3,6 +3,7 @@ import { openai, DEBUG } from "../gpt.js";
 import scenePrompt from "../prompts/scene.js";
 import { interactionToMessages, messagesToContent } from "../utils/messages.js";
 import { createLogger } from "../utils/logger.js";
+import catchError from "../utils/errors.js";
 
 export default async function visualize(interaction: CommandInteraction) {
   // Add attached image
@@ -15,15 +16,11 @@ export default async function visualize(interaction: CommandInteraction) {
   const scene = await messagesToContent(messages, logger);
 
   let response: any | null = null;
-  try {
-    response = await openai.createImage({
-      prompt: scene.slice(0, 1000),
-      n: 1,
-      size: "256x256",
-    });
-  } catch (e) {
-    console.log(`Error: ${e}`);
-  }
+  response = await openai.createImage({
+    prompt: scene.slice(0, 1000),
+    n: 1,
+    size: "256x256",
+  }).catch(catchError)
   if (response != null) {
     const [data] = response.data.data;
     const exampleEmbed = new EmbedBuilder()

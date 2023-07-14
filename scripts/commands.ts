@@ -19,6 +19,7 @@ import { interactionToMessages } from "./utils/messages.js";
 import exportMessages from "./commands/export.js";
 import sendToChannel from "./commands/sendToChannel.js";
 import { Stream } from "form-data";
+import catchError from "./utils/errors.js";
 
 const BUILT_IN_RESPONSE_LIMIT = 2000;
 
@@ -68,73 +69,67 @@ async function handleInteraction({
 
   // Update reply
   let response;
-  try {
-    response = await (firstReply
-      ? interaction.followUp(reply)
-      : channel.send(reply));
-  } catch (e) {
-    console.log(e);
-    console.log("firstReply:", firstReply);
-    try {
-      console.log(`Trying again with firstReply = ${!firstReply}`);
-      response = await (!firstReply
-        ? interaction.followUp(reply)
-        : channel.send(reply));
-    } catch (e) {
-      console.log(e);
-      console.log("Giving up");
-      return;
-    }
-  }
-  await response
-    .awaitMessageComponent()
-    .then(async (buttonInteraction: ButtonInteraction) => {
-      async function acknowledgeAndremoveButtons() {
-        const content =
-          reply.content.length > 0 ? reply.content : "Content was empty"; // this is necessary because of an annoying error that gets thrown when you try to update a message with no content
-        await buttonInteraction.update({
-          content,
-          components: [],
-        });
-      }
-      // Send new message
-      switch (buttonInteraction.customId) {
-        case buttons.reveal.id:
-          acknowledgeAndremoveButtons();
-          handleInteraction({
-            text: excess,
-            interaction,
-            firstReply,
-          });
-          break;
-        case buttons.submit.id:
-          await acknowledgeAndremoveButtons();
-          await handleInteraction({
-            firstReply: false,
-            interaction,
-            text: await submit(interaction),
-          });
-          break;
-        case buttons.visualize.id:
-          await acknowledgeAndremoveButtons();
-          await visualize(interaction);
-          break;
-        case buttons.diagram.id:
-          await acknowledgeAndremoveButtons();
-          await diagram(interaction);
-          break;
-        default:
-          console.log("Cannot use button " + buttonInteraction.customId);
-      }
-    })
-    .catch(async (e) => {
-      console.log(e);
-      await response.edit({
-        content: `${e}`,
-        components: [],
-      });
-    });
+  response = await (firstReply
+    ? interaction.followUp(reply)
+    : channel.send(reply)).then(
+      (response) => response
+        .awaitMessageComponent()
+        .then(async (buttonInteraction: ButtonInteraction) => {
+          async function acknowledgeAndremoveButtons() {
+            const content =
+              reply.content.length > 0 ? reply.content : "Content was empty"; // this is necessary because of an annoying error that gets thrown when you try to update a message with no content
+            await buttonInteraction.update({
+              content,
+              components: [],
+            });
+          }
+          // Send new message
+          switch (buttonInteraction.customId) {
+            case buttons.reveal.id:
+              acknowledgeAndremoveButtons();
+              handleInteraction({
+                text: excess,
+                interaction,
+                firstReply,
+              });
+              break;
+            case buttons.submit.id:
+              await acknowledgeAndremoveButtons();
+              await handleInteraction({
+                firstReply: false,
+                interaction,
+                text: await submit(interaction),
+              });
+              break;
+            case buttons.visualize.id:
+              await acknowledgeAndremoveButtons();
+              await visualize(interaction);
+              break;
+            case buttons.diagram.id:
+              await acknowledgeAndremoveButtons();
+              await diagram(interaction);
+              break;
+            default:
+              console.log("Cannot use button " + buttonInteraction.customId);
+          }
+        }).catch(async (e) => {
+          catchError(e)
+          console.log("firstReply:", firstReply);
+          console.log("Trying again with firstReply", !firstReply);
+          return await (!firstReply
+            ? interaction.followUp(reply)
+            : channel.send(reply).catch(
+              (e) => {
+                catchError(e)
+                console.log("Giving up");
+                return;
+              }
+            ))
+        }
+        )
+    )
 }
+;
 
 // Create commands
 export const Commands = [

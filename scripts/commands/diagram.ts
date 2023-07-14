@@ -83,6 +83,7 @@ export default async function diagram(interaction: CommandInteraction) {
       valid = true;
     } catch (e) {
       console.log(e);
+      console.log("Caught!")
       code = code.split("\n").slice(0, -2).join("\n");
     }
   }
