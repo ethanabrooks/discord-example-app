@@ -11,6 +11,7 @@ import {
 } from "@dqbd/tiktoken";
 import text from "./prompts/debug.js";
 import { Logger } from "pino";
+import catchError from "./utils/errors.js";
 
 const MODEL: TiktokenModel = "gpt-3.5-turbo-0301";
 export const DEBUG = false;
@@ -21,10 +22,10 @@ type IndexedMessage = {
   index: number;
 };
 
-function numTokensFromMessages(
+async function numTokensFromMessages(
   messages: ChatCompletionRequestMessage[],
   model: TiktokenModel,
-): number {
+): Promise<number> {
   let encoding: any;
   try {
     encoding = encoding_for_model(model);
@@ -62,7 +63,18 @@ function numTokensFromMessages(
   for (let message of messages) {
     numTokens += tokensPerMessage;
     for (let key in message) {
-      numTokens += encoding.encode(message[key]).length;
+      let encoded = null;
+      let delay = 1;
+      while (encoded == null) {
+        try {
+          encoded = encoding.encode(message[key])
+        } catch (error) {
+          catchError(error);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+        delay *= 2;
+      };
+      numTokens += encoded.length;
       if (key == "name") {
         numTokens += tokensPerName;
       }
@@ -280,7 +292,7 @@ if (!isContiguous([1, 2, 3, 3, 4, 5])) {
 }
 
 // Retain the last portion of messages that has tokens roughly equal to limit.
-function truncateMessages({
+async function truncateMessages({
   messages,
   model,
   limit,
@@ -297,7 +309,7 @@ function truncateMessages({
   }
 
   limit = Math.round(limit);
-  const numTokens = numTokensFromMessages(
+  const numTokens = await numTokensFromMessages(
     messages.map(indexedToChatCompletionRequestMessage),
     model,
   );
@@ -315,7 +327,7 @@ function truncateMessages({
   if (excess < 0) {
     // If we are below the limit
     const remainder = -excess;
-    const truncated = truncateMessages({
+    const truncated = await truncateMessages({
       discard: [],
       messages: discard,
       model,
@@ -324,7 +336,7 @@ function truncateMessages({
     return concatMessages(truncated, messages);
   } else if (excess > 0) {
     const [firstHalf, secondHalf] = bisectMessages(messages);
-    return truncateMessages({
+    return await truncateMessages({
       discard: firstHalf, // discard first half
       messages: secondHalf,
       model,
@@ -366,13 +378,13 @@ export async function createChatCompletionWithBackoff({
     indexedMessages,
     length - getApproxMessageLength(model),
   );
-  const inputMessages = truncateMessages({
+  const inputMessages = (await truncateMessages({
     discard,
     messages: truncated,
     model,
     limit: getMaxTokens(model),
-  }).map(indexedToChatCompletionRequestMessage);
-  const numTokens = numTokensFromMessages(inputMessages, model);
+  })).map(indexedToChatCompletionRequestMessage);
+  const numTokens = await numTokensFromMessages(inputMessages, model);
   const numCharacters = messagesLength(inputMessages);
   console.log("Messages tokens:", numTokens);
   console.log("Messages characters:", numCharacters);
