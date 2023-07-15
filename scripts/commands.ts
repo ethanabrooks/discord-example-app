@@ -68,8 +68,7 @@ async function handleInteraction({
   }
 
   // Update reply
-  let response;
-  response = await (firstReply
+  await (firstReply
     ? interaction.followUp(reply)
     : channel.send(reply)).then(
       (response) => response
