@@ -20,7 +20,6 @@
   "author": "Ethan Brooks",
   "license": "MIT",
   "dependencies": {
-    "@dqbd/tiktoken": "^1.0.7",
     "@types/form-data": "^2.5.0",
     "@types/node": "^20.3.1",
     "axios": "^1.4.0",
@@ -30,6 +29,7 @@
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
     "form-data": "^4.0.0",
+    "gpt-3-encoder": "^1.1.4",
     "node-fetch": "^3.3.0",
     "openai": "^3.3.0",
     "pino": "^8.14.1"

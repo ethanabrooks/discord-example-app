@@ -4,16 +4,12 @@ import {
   Configuration,
   OpenAIApi,
 } from "openai";
-import {
-  get_encoding,
-  encoding_for_model,
-  TiktokenModel,
-} from "@dqbd/tiktoken";
+import { encode } from 'gpt-3-encoder'
+
 import text from "./prompts/debug.js";
 import { Logger } from "pino";
-import catchError from "./utils/errors.js";
 
-const MODEL: TiktokenModel = "gpt-3.5-turbo-0301";
+const MODEL = "gpt-3.5-turbo-0301";
 export const DEBUG = false;
 
 type IndexedMessage = {
@@ -22,66 +18,11 @@ type IndexedMessage = {
   index: number;
 };
 
-async function numTokensFromMessages(
+function numTokensFromMessages(
   messages: ChatCompletionRequestMessage[],
-  model: TiktokenModel,
-): Promise<number> {
-  let encoding: any;
-  try {
-    encoding = encoding_for_model(model);
-  } catch (error) {
-    console.warn("Warning: model not found. Using cl100k_base encoding.");
-    encoding = get_encoding("cl100k_base");
-  }
-  let tokensPerMessage: number;
-  let tokensPerName: number;
+): number {
+  return encode(JSON.stringify(messages)).length
 
-  switch (model) {
-    case "gpt-4":
-    case "gpt-4-0314":
-    case "gpt-4-32k-0314":
-    case "gpt-3.5-turbo":
-      tokensPerMessage = 3;
-      tokensPerName = 1;
-      if (model.includes("gpt-3.5-turbo")) {
-        console.warn(
-          "Warning: gpt-3.5-turbo may update over time. Returning num tokens assuming gpt-3.5-turbo-0613.",
-        );
-      }
-      break;
-    case "gpt-3.5-turbo-0301":
-      tokensPerMessage = 4;
-      tokensPerName = -1;
-      break;
-    default:
-      throw new Error(
-        `numTokensFromMessages() is not implemented for model ${model}. See https://github.com/openai/openai-python/blob/main/chatml.md for information on how messages are converted to tokens.`,
-      );
-  }
-
-  let numTokens: number = 0;
-  for (let message of messages) {
-    numTokens += tokensPerMessage;
-    for (let key in message) {
-      let encoded = null;
-      let delay = 1;
-      while (encoded == null) {
-        try {
-          encoded = encoding.encode(message[key])
-        } catch (error) {
-          catchError(error);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-        }
-        delay *= 2;
-      };
-      numTokens += encoded.length;
-      if (key == "name") {
-        numTokens += tokensPerName;
-      }
-    }
-  }
-  numTokens += 3; // every reply is primed with assistant
-  return numTokens;
 }
 
 function getMaxTokens(model: string): number {
@@ -292,14 +233,14 @@ if (!isContiguous([1, 2, 3, 3, 4, 5])) {
 }
 
 // Retain the last portion of messages that has tokens roughly equal to limit.
-async function truncateMessages({
+function truncateMessages({
   messages,
   model,
   limit,
   discard,
 }: {
   messages: IndexedMessage[];
-  model: TiktokenModel;
+  model: string;
   limit: number;
   discard: IndexedMessage[];
 }) {
@@ -309,9 +250,8 @@ async function truncateMessages({
   }
 
   limit = Math.round(limit);
-  const numTokens = await numTokensFromMessages(
+  const numTokens = numTokensFromMessages(
     messages.map(indexedToChatCompletionRequestMessage),
-    model,
   );
   const excess = numTokens - limit;
   console.log(
@@ -327,7 +267,7 @@ async function truncateMessages({
   if (excess < 0) {
     // If we are below the limit
     const remainder = -excess;
-    const truncated = await truncateMessages({
+    const truncated = truncateMessages({
       discard: [],
       messages: discard,
       model,
@@ -336,7 +276,7 @@ async function truncateMessages({
     return concatMessages(truncated, messages);
   } else if (excess > 0) {
     const [firstHalf, secondHalf] = bisectMessages(messages);
-    return await truncateMessages({
+    return truncateMessages({
       discard: firstHalf, // discard first half
       messages: secondHalf,
       model,
@@ -363,7 +303,7 @@ export async function createChatCompletionWithBackoff({
   messages: ChatCompletionRequestMessage[];
   stopWord?: string | undefined;
   delay?: number;
-  model?: TiktokenModel;
+  model?: string;
   logger?: Logger | null;
 }): Promise<string | undefined> {
   const length = messagesLength(messages);
@@ -378,13 +318,13 @@ export async function createChatCompletionWithBackoff({
     indexedMessages,
     length - getApproxMessageLength(model),
   );
-  const inputMessages = (await truncateMessages({
+  const inputMessages = (truncateMessages({
     discard,
     messages: truncated,
     model,
     limit: getMaxTokens(model),
   })).map(indexedToChatCompletionRequestMessage);
-  const numTokens = await numTokensFromMessages(inputMessages, model);
+  const numTokens = numTokensFromMessages(inputMessages);
   const numCharacters = messagesLength(inputMessages);
   console.log("Messages tokens:", numTokens);
   console.log("Messages characters:", numCharacters);
