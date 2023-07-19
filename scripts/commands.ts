@@ -126,8 +126,9 @@ const gpt = {
   four: "gpt-4",
 };
 const subcommands = {
+  add: "add",
   start: "start",
-  choose: "choose",
+  update: "update",
 };
 function splitFacts(factsString: string) {
   return factsString.split("\n").flatMap((line) => {
@@ -137,7 +138,10 @@ function splitFacts(factsString: string) {
 }
 
 function factsToString(facts: string[]) {
-  return facts.map((fact, index) => `${index + 1}. ${fact}`).join("\n");
+  if (facts.length == 0) {
+    return "No facts.";
+  }
+  return facts.map((fact, index) => `${index + 1}. **${fact}**`).join("\n");
 }
 
 // Create commands
@@ -153,7 +157,18 @@ export const Commands = [
       )
       .addSubcommand((subcommand) =>
         subcommand
-          .setName(subcommands.choose)
+          .setName(subcommands.add)
+          .setDescription("Add new facts.")
+          .addStringOption((option) =>
+            option
+              .setName("new-facts")
+              .setDescription("The facts to replace it with.")
+              .setRequired(true),
+          ),
+      )
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName(subcommands.update)
           .setDescription("Choose a fact to update.")
           .addNumberOption((option) =>
             option
@@ -168,35 +183,18 @@ export const Commands = [
               .setRequired(true),
           ),
       ),
-    culprit: null,
+    proposition: null,
+    truth: null,
     facts: [],
     players: [],
     turn: 0,
     factsToString() {
-      return `${factsToString(this.facts)}
-      
-Culprit: ${this.culprit}`;
-    },
-    async checkCulprit(facts) {
-      if (DEBUG) return prompt.culprit;
-      const culprit = await complete({
-        input: `
-          ${facts.join("\n")}
-          ${prompt.inferrence}`,
-        model: gpt.four,
-      });
-      return culprit.endsWith(".")
-        ? await complete({
-            input: `"${culprit}"
-        ${prompt.getName}`,
-            model: gpt.three,
-          })
-        : culprit;
+      return `${factsToString(this.facts)}`;
     },
     async execute(interaction: ChatInputCommandInteraction) {
-      let player: string;
       await interaction.deferReply();
-      switch (interaction.options.getSubcommand()) {
+      const subcommand = interaction.options.getSubcommand();
+      switch (subcommand) {
         case subcommands.start:
           const members: ThreadMemberManager | Collection<string, GuildMember> =
             interaction.channel.members;
@@ -207,91 +205,122 @@ Culprit: ${this.culprit}`;
               .filter(({ user }) => !user.bot)
               .map(({ user }) => user.username);
           }
-          const scenario = DEBUG
-            ? prompt.scenario
+          const randomIndex = Math.floor(
+            Math.random() * prompt.propositions.length,
+          );
+          this.proposition = prompt.propositions[randomIndex];
+          this.truth = Math.random() < 0.5;
+          const fact = this.truth
+            ? this.proposition
             : await complete({
-                input: prompt.initial,
-                model: gpt.three,
+                input: `Negate this statement (just return the negated statement, nothing else): ${this.proposition}`,
+                model: `${gpt.three}`,
               });
-          const factsString = DEBUG
-            ? prompt.factsString
-            : await complete({
-                input: `
-          ${prompt.factPrefixes}
-          ${scenario}`,
-                model: gpt.three,
-              });
-          this.facts = splitFacts(factsString);
-          this.culprit = await this.checkCulprit(this.facts);
-          console.log(this.facts);
-          const content = prompt.gameDescription;
-          console.log(this.players);
-          player = this.players[this.turn % this.players.length];
+          this.facts = [fact];
+          console.log("TRUTH", this.truth);
           await handleInteraction({
             interaction,
-            text: `${this.factsToString()}
-          
-Turn: ${player}`,
+            text: `Given the following facts:
+            ${factsToString(this.facts)}
+
+The statement "**${this.proposition}**" is: **_${this.truth}_**`,
           });
           break;
-        case subcommands.choose:
-          const factIndex = interaction.options.getNumber("fact") - 1;
-          const newFactString = interaction.options.getString("new-facts");
+        case subcommands.add:
+        case subcommands.update:
+          const userInput = interaction.options.getString("new-facts");
+          const newFactsString = await complete({
+            input: `
+        ${prompt.factPrefixes}
+        ${userInput}`,
+            model: gpt.three,
+          });
+          let newFactsList = splitFacts(newFactsString);
           const username = interaction.user.username;
-          if (factIndex < 0 || this.facts.length <= factIndex) {
-            return await handleInteraction({
-              interaction,
-              text: `fact index must be between 1 and ${this.facts.length}.`,
-            });
-          }
-          player = this.players[this.turn % this.players.length];
-          console.log("Players:", this.players);
-          console.log("Turn:", this.turn);
-          console.log("Player:", player);
-          // if (player == username) {
-          let newFactList = this.facts;
-          if (!DEBUG) {
-            const newFactsString2 = await complete({
-              input: `
-${prompt.factPrefixes}
-${newFactString}`,
-              model: gpt.three,
-            });
-            newFactList = this.facts
-              .slice(0, factIndex)
-              .concat(splitFacts(newFactsString2))
-              .concat(this.facts.slice(factIndex + 1, -1));
-          }
-          const newCulprit = await this.checkCulprit(newFactList);
-          const whatYouDid = `${username} changed fact ${
-            factIndex + 1
-          } to: "${newFactString}"`;
-          if (newCulprit === this.culprit) {
-            this.facts = newFactList;
-            await handleInteraction({
-              interaction,
-              text: `${this.factsToString()}
 
-${whatYouDid}`,
-            });
-            return;
-          } else {
-            await handleInteraction({
-              interaction,
-              text: `${whatYouDid}
-                
-You lose, ${username}. The new culprit is ${newCulprit}.`,
-            });
-            return;
+          let whatYouDid: string;
+          switch (subcommand) {
+            case subcommands.add:
+              newFactsList = this.facts.concat(newFactsList);
+              whatYouDid = `${username} added facts: 
+"${userInput}"`;
+              break;
+            case subcommands.update:
+              const factIndex = interaction.options.getNumber("fact") - 1;
+              whatYouDid = `${username} changed fact ${
+                factIndex + 1
+              } to: "${userInput}"`;
+              if (factIndex < 0 || this.facts.length <= factIndex) {
+                const requiredFactIndex =
+                  this.facts.length == 1
+                    ? `${1}`
+                    : `between 1 and ${this.facts.length}`;
+                return await handleInteraction({
+                  interaction,
+                  text: `fact index must be ${requiredFactIndex}`,
+                });
+              }
+              newFactsList = this.facts
+                .slice(0, factIndex)
+                .concat(newFactsList)
+                .concat(this.facts.slice(factIndex + 1));
+              break;
+            default:
+              throw new Error(`Unknown subcommand ${subcommand}`);
           }
-          // } else {
-          //   await handleInteraction({
-          //     interaction,
-          //     text: `It's not your turn, ${username}.`,
-          //   });
-          // }
+
+          const inferrencePrompt = `Given the following facts:
+          ${factsToString(newFactsList)}}
+          
+          The statement "${this.proposition}" is:`;
+
+          const inferrence = (
+            await complete({
+              input: inferrencePrompt + " [true|false|indeterminate]",
+              model: gpt.four,
+            })
+          ).toLowerCase();
+          console.log("inferrence:", inferrence);
+          const containsTrue = inferrence.includes("true");
+          const containsFalse = inferrence.includes("false");
+          let newTruth: null | boolean = null;
+          if (containsTrue && !containsFalse) {
+            newTruth = true;
+          } else if (!containsTrue && containsFalse) {
+            newTruth = false;
+          }
+          const change = newTruth !== this.truth;
+          console.log(
+            "newTruth:",
+            newTruth,
+            "this.truth:",
+            this.truth,
+            "change:",
+            change,
+          );
+          let text = `${whatYouDid}
+
+${factsToString(newFactsList)}
+
+The inferrence is ${change ? "now" : "still"}: ${inferrence} `;
+          if (change == null) {
+            text = `${text}
+
+This resulted in an indeterminate inferrence so the facts are still:
+${factsToString(this.facts)}.`;
+          } else {
+            this.facts = newFactsList;
+          }
+          console.log(this.facts);
           this.turn += 1;
-          break;
+          text = `${text}
+
+${change ? "You lose, " : "Keep playing, "}${username}
+`;
+          return await handleInteraction({
+            interaction,
+            text,
+          });
 
         default:
           break;
