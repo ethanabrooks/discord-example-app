@@ -7,6 +7,8 @@ export const factPrefixes =
 export const inferrence =
   "Who does the weight of the evidence point to as the culprit? Just write a name, nothing else.";
 
+export const getName =
+  "What is the name in this sentence? Just write a name, nothing else.";
 export const gameDescription = "Choose a fact to remove.";
 
 export const scenario = `Title: The Mysterious Heist: The Case of the Stolen Jewels

@@ -178,14 +178,20 @@ export const Commands = [
 Culprit: ${this.culprit}`;
     },
     async checkCulprit(facts) {
-      return DEBUG
-        ? prompt.culprit
-        : await complete({
-            input: `
+      if (DEBUG) return prompt.culprit;
+      const culprit = await complete({
+        input: `
           ${facts.join("\n")}
           ${prompt.inferrence}`,
-            model: gpt.four,
-          });
+        model: gpt.four,
+      });
+      return culprit.endsWith(".")
+        ? await complete({
+            input: `"${culprit}"
+        ${prompt.getName}`,
+            model: gpt.three,
+          })
+        : culprit;
     },
     async execute(interaction: ChatInputCommandInteraction) {
       let player: string;
