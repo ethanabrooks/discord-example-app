@@ -245,48 +245,51 @@ Turn: ${player}`,
             });
           }
           player = this.players[this.turn % this.players.length];
-          if (player == username) {
-            let newFactList = this.facts;
-            if (!DEBUG) {
-              const newFactsString2 = await complete({
-                input: `
+          console.log("Players:", this.players);
+          console.log("Turn:", this.turn);
+          console.log("Player:", player);
+          // if (player == username) {
+          let newFactList = this.facts;
+          if (!DEBUG) {
+            const newFactsString2 = await complete({
+              input: `
 ${prompt.factPrefixes}
 ${newFactString}`,
-                model: gpt.three,
-              });
-              newFactList = this.facts
-                .slice(0, factIndex)
-                .concat(splitFacts(newFactsString2))
-                .concat(this.facts.slice(factIndex + 1, -1));
-            }
-            const newCulprit = await this.checkCulprit(newFactList);
-            const whatYouDid = `${username} changed fact ${
-              factIndex + 1
-            } to: "${newFactString}"`;
-            if (newCulprit === this.culprit) {
-              this.facts = newFactList;
-              await handleInteraction({
-                interaction,
-                text: `${this.factsToString()}
+              model: gpt.three,
+            });
+            newFactList = this.facts
+              .slice(0, factIndex)
+              .concat(splitFacts(newFactsString2))
+              .concat(this.facts.slice(factIndex + 1, -1));
+          }
+          const newCulprit = await this.checkCulprit(newFactList);
+          const whatYouDid = `${username} changed fact ${
+            factIndex + 1
+          } to: "${newFactString}"`;
+          if (newCulprit === this.culprit) {
+            this.facts = newFactList;
+            await handleInteraction({
+              interaction,
+              text: `${this.factsToString()}
 
 ${whatYouDid}`,
-              });
-              return;
-            } else {
-              await handleInteraction({
-                interaction,
-                text: `${whatYouDid}
-                
-You lose, ${username}. The new culprit is ${newCulprit}.`,
-              });
-              return;
-            }
+            });
+            return;
           } else {
             await handleInteraction({
               interaction,
-              text: `It's not your turn, ${username}.`,
+              text: `${whatYouDid}
+                
+You lose, ${username}. The new culprit is ${newCulprit}.`,
             });
+            return;
           }
+          // } else {
+          //   await handleInteraction({
+          //     interaction,
+          //     text: `It's not your turn, ${username}.`,
+          //   });
+          // }
           this.turn += 1;
           break;
 
