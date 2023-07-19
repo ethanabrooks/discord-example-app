@@ -260,19 +260,24 @@ ${newFactString}`,
                 .concat(this.facts.slice(factIndex + 1, -1));
             }
             const newCulprit = await this.checkCulprit(newFactList);
+            const whatYouDid = `${username} changed fact ${
+              factIndex + 1
+            } to: "${newFactString}"`;
             if (newCulprit === this.culprit) {
               this.facts = newFactList;
               await handleInteraction({
                 interaction,
                 text: `${this.factsToString()}
 
-Still in the game, ${username}.`,
+${whatYouDid}`,
               });
               return;
             } else {
               await handleInteraction({
                 interaction,
-                text: `You lose, ${username}. The new culprit is ${newCulprit}.`,
+                text: `${whatYouDid}
+                
+You lose, ${username}. The new culprit is ${newCulprit}.`,
               });
               return;
             }
