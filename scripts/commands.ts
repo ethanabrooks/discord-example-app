@@ -10,17 +10,19 @@ import {
   Attachment,
   AttachmentBuilder,
   AttachmentPayload,
+  GuildMember,
+  Collection,
+  ThreadMemberManager,
+  ChatInputCommandInteraction,
+  ButtonStyle,
 } from "discord.js";
-import { ButtonComponents, buttons } from "./buttons.js";
-import submit from "./commands/submit.js";
-import visualize from "./commands/visualize.js";
-import diagram from "./commands/diagram.js";
-import { interactionToMessages } from "./utils/messages.js";
-import exportMessages from "./commands/export.js";
-import sendToChannel from "./commands/sendToChannel.js";
+import { buttons } from "./buttons.js";
 import { Stream } from "form-data";
 import catchError from "./utils/errors.js";
+import { complete } from "./gpt.js";
+import * as prompt from "./prompts.js";
 
+const DEBUG = false;
 const BUILT_IN_RESPONSE_LIMIT = 2000;
 
 function splitAtResponseLimit(text: string) {
@@ -31,14 +33,14 @@ function splitAtResponseLimit(text: string) {
 }
 
 async function handleInteraction({
-  firstReply,
   interaction,
   text,
+  firstReply = true,
   files = [],
 }: {
-  firstReply: boolean;
   interaction: CommandInteraction;
   text: string;
+  firstReply?: boolean;
   files?: (
     | BufferResolvable
     | Stream
@@ -49,18 +51,28 @@ async function handleInteraction({
   )[];
 }) {
   const [content, excess] = splitAtResponseLimit(text);
-  const row = Object.values(buttons)
-    .filter(({ id }) => excess.length > 0 || id !== buttons.reveal.id)
-    .map(({ id, label, style }: ButtonComponents) =>
-      new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style),
-    )
-    .reduce(
-      (row, button) => row.addComponents(button),
-      new ActionRowBuilder<ButtonBuilder>(),
-    );
+  const button = new ButtonBuilder()
+    .setCustomId(buttons.reveal.id)
+    .setLabel("Response cut off. Click to reveal")
+    .setStyle(ButtonStyle.Primary);
+  const components: ActionRowBuilder<ButtonBuilder>[] =
+    excess.length == 0
+      ? []
+      : [new ActionRowBuilder<ButtonBuilder>().addComponents(button)];
+  // Object.values(buttons)
+  //   .map(({ id, label, style }: ButtonComponents) =>
+  //     new ButtonBuilder()
+  //       .setCustomId(id)
+  //       .setLabel(label)
+  //       .setStyle(style),
+  //   )
+  //   .reduce(
+  //     (row, button): ActionRowBuilder<ButtonBuilder> =>
+  //       row.addComponents(button),
+  //     new ActionRowBuilder<ButtonBuilder>(),
+  //   ),
 
-  console.log("files", files);
-  const reply = { content, components: [row], files };
+  const reply = { content, components, files };
   const channel = interaction.channel;
   if (channel == null) {
     console.log("Cannot send message to null channel");
@@ -68,10 +80,9 @@ async function handleInteraction({
   }
 
   // Update reply
-  await (firstReply
-    ? interaction.followUp(reply)
-    : channel.send(reply)).then(
-      (response) => response
+  await (firstReply ? interaction.followUp(reply) : channel.send(reply)).then(
+    (response) =>
+      response
         .awaitMessageComponent()
         .then(async (buttonInteraction: ButtonInteraction) => {
           async function acknowledgeAndremoveButtons() {
@@ -92,121 +103,185 @@ async function handleInteraction({
                 firstReply,
               });
               break;
-            case buttons.submit.id:
-              await acknowledgeAndremoveButtons();
-              await handleInteraction({
-                firstReply: false,
-                interaction,
-                text: await submit(interaction),
-              });
-              break;
-            case buttons.visualize.id:
-              await acknowledgeAndremoveButtons();
-              await visualize(interaction);
-              break;
-            case buttons.diagram.id:
-              await acknowledgeAndremoveButtons();
-              await diagram(interaction);
-              break;
             default:
               console.log("Cannot use button " + buttonInteraction.customId);
           }
-        }).catch(async (e) => {
-          catchError(e)
+        })
+        .catch(async (e) => {
+          catchError(e);
           console.log("firstReply:", firstReply);
           console.log("Trying again with firstReply", !firstReply);
           return await (!firstReply
             ? interaction.followUp(reply)
-            : channel.send(reply).catch(
-              (e) => {
-                catchError(e)
+            : channel.send(reply).catch((e) => {
+                catchError(e);
                 console.log("Giving up");
                 return;
-              }
-            ))
-        }
-        )
-    )
+              }));
+        }),
+  );
 }
-;
+const gpt = {
+  three: "gpt-3.5-turbo",
+  four: "gpt-4",
+};
+const subcommands = {
+  start: "start",
+  choose: "choose",
+};
+function splitFacts(factsString: string) {
+  return factsString.split("\n").flatMap((line) => {
+    const index = line.indexOf("]");
+    return index === -1 ? [] : [line.substring(index + 1).trim()];
+  });
+}
+
+function factsToString(facts: string[]) {
+  return facts.map((fact, index) => `${index + 1}. ${fact}`).join("\n");
+}
 
 // Create commands
 export const Commands = [
   {
     data: new SlashCommandBuilder()
-      .setName("g")
-      .setDescription("Query GPT with recent chat history"),
-    async execute(interaction: CommandInteraction) {
-      await interaction.deferReply();
-      await interactionToMessages(interaction);
-      const text = await submit(interaction);
-      await handleInteraction({
-        firstReply: true,
-        interaction,
-        text,
-      });
-    },
-  },
-  {
-    data: new SlashCommandBuilder()
-      .setName("visualize")
-      .setDescription("Visualize recent chat history as a scene"),
-    async execute(interaction: CommandInteraction) {
-      await interaction.deferReply();
-      await visualize(interaction);
-    },
-  },
-  {
-    data: new SlashCommandBuilder()
-      .setName("diagram")
-      .setDescription("Create a diagram of the scene"),
-    async execute(interaction: CommandInteraction) {
-      await interaction.deferReply();
-      await diagram(interaction);
-    },
-  },
-  {
-    data: new SlashCommandBuilder()
-      .setName("export")
-      .setDescription("Export messages to hastebin"),
-    async execute(interaction: CommandInteraction) {
-      await interaction.deferReply();
-      const { text, files } = await exportMessages(interaction);
-      await handleInteraction({
-        firstReply: true,
-        interaction,
-        text,
-        files,
-      });
-    },
-  },
-  {
-    data: new SlashCommandBuilder()
-      .setName("sendmessage")
-      .setDescription("Send message to channel")
-      .addStringOption((option) =>
-        option
-          .setName("message")
-          .setDescription("Message to send")
-          .setRequired(true),
+      .setName("play")
+      .setDescription(`Play inference Jenga`)
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName(subcommands.start)
+          .setDescription("Start a new game."),
       )
-      .addStringOption((option) =>
-        option
-          .setName("channel")
-          .setDescription("ID of destination channel")
-          .setRequired(true),
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName(subcommands.choose)
+          .setDescription("Choose a fact to update.")
+          .addNumberOption((option) =>
+            option
+              .setName("fact")
+              .setDescription("The fact to remove.")
+              .setRequired(true),
+          )
+          .addStringOption((option) =>
+            option
+              .setName("new-facts")
+              .setDescription("The facts to replace it with.")
+              .setRequired(true),
+          ),
       ),
-    async execute(interaction: CommandInteraction) {
+    culprit: null,
+    facts: [],
+    players: [],
+    turn: 0,
+    factsToString() {
+      return `${factsToString(this.facts)}
+      
+Culprit: ${this.culprit}`;
+    },
+    async checkCulprit(facts) {
+      return DEBUG
+        ? prompt.culprit
+        : await complete({
+            input: `
+          ${facts.join("\n")}
+          ${prompt.inferrence}`,
+            model: gpt.four,
+          });
+    },
+    async execute(interaction: ChatInputCommandInteraction) {
+      let player: string;
       await interaction.deferReply();
+      switch (interaction.options.getSubcommand()) {
+        case subcommands.start:
+          const members: ThreadMemberManager | Collection<string, GuildMember> =
+            interaction.channel.members;
+          if (members instanceof ThreadMemberManager) {
+            console.log("Thread Member Manager");
+          } else {
+            this.players = Array.from(members.values())
+              .filter(({ user }) => !user.bot)
+              .map(({ user }) => user.username);
+          }
+          const scenario = DEBUG
+            ? prompt.scenario
+            : await complete({
+                input: prompt.initial,
+                model: gpt.three,
+              });
+          const factsString = DEBUG
+            ? prompt.factsString
+            : await complete({
+                input: `
+          ${prompt.factPrefixes}
+          ${scenario}`,
+                model: gpt.three,
+              });
+          this.facts = splitFacts(factsString);
+          this.culprit = await this.checkCulprit(this.facts);
+          console.log(this.facts);
+          const content = prompt.gameDescription;
+          console.log(this.players);
+          player = this.players[this.turn % this.players.length];
+          await handleInteraction({
+            interaction,
+            text: `${this.factsToString()}
+          
+Turn: ${player}`,
+          });
+          break;
+        case subcommands.choose:
+          const factIndex = interaction.options.getNumber("fact") - 1;
+          const newFactString = interaction.options.getString("new-facts");
+          const username = interaction.user.username;
+          if (factIndex < 0 || this.facts.length <= factIndex) {
+            return await handleInteraction({
+              interaction,
+              text: `fact index must be between 1 and ${this.facts.length}.`,
+            });
+          }
+          player = this.players[this.turn % this.players.length];
+          if (player == username) {
+            let newFactList = this.facts;
+            if (!DEBUG) {
+              const newFactsString2 = await complete({
+                input: `
+${prompt.factPrefixes}
+${newFactString}`,
+                model: gpt.three,
+              });
+              newFactList = this.facts
+                .slice(0, factIndex)
+                .concat(splitFacts(newFactsString2))
+                .concat(this.facts.slice(factIndex + 1, -1));
+            }
+            const newCulprit = await this.checkCulprit(newFactList);
+            if (newCulprit === this.culprit) {
+              this.facts = newFactList;
+              await handleInteraction({
+                interaction,
+                text: `${this.factsToString()}
 
-      const text = interaction.isChatInputCommand()
-        ? await sendToChannel(interaction)
-        : `Incompatible interaction: ${typeof interaction}`;
-      await handleInteraction({
-        firstReply: true,
-        interaction,
-        text,
-      });
+Still in the game, ${username}.`,
+              });
+              return;
+            } else {
+              await handleInteraction({
+                interaction,
+                text: `You lose, ${username}. The new culprit is ${newCulprit}.`,
+              });
+              return;
+            }
+          } else {
+            await handleInteraction({
+              interaction,
+              text: `It's not your turn, ${username}.`,
+            });
+          }
+          this.turn += 1;
+          break;
+
+        default:
+          break;
+      }
     },
   },
 ];

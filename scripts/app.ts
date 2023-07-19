@@ -23,8 +23,6 @@ export default class MyClient extends Client {
 // Create a new client instance
 const client = new MyClient({ intents: [GatewayIntentBits.Guilds] });
 
-
-
 // Log in to Discord with your client's token
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.APP_ID;

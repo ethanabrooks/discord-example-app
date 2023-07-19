@@ -4,7 +4,7 @@ import {
   Configuration,
   OpenAIApi,
 } from "openai";
-import { encode } from 'gpt-3-encoder'
+import { encode } from "gpt-3-encoder";
 
 import text from "./prompts/debug.js";
 import { Logger } from "pino";
@@ -21,8 +21,7 @@ type IndexedMessage = {
 function numTokensFromMessages(
   messages: ChatCompletionRequestMessage[],
 ): number {
-  return encode(JSON.stringify(messages)).length
-
+  return encode(JSON.stringify(messages)).length;
 }
 
 function getMaxTokens(model: string): number {
@@ -293,6 +292,31 @@ const configuration = new Configuration({
 });
 export const openai = new OpenAIApi(configuration);
 
+export async function complete({
+  input,
+  stopWord = undefined,
+  delay = 1,
+  model = MODEL,
+  logger = null,
+}: {
+  input: string;
+  stopWord?: string | undefined;
+  delay?: number;
+  model?: string;
+  logger?: Logger | null;
+}) {
+  const messages: ChatCompletionRequestMessage[] = [
+    { role: "user", content: input },
+  ];
+  return createChatCompletionWithBackoff({
+    messages,
+    stopWord,
+    delay,
+    model,
+    logger,
+  });
+}
+
 export async function createChatCompletionWithBackoff({
   messages,
   stopWord = undefined,
@@ -318,12 +342,12 @@ export async function createChatCompletionWithBackoff({
     indexedMessages,
     length - getApproxMessageLength(model),
   );
-  const inputMessages = (truncateMessages({
+  const inputMessages = truncateMessages({
     discard,
     messages: truncated,
     model,
     limit: getMaxTokens(model),
-  })).map(indexedToChatCompletionRequestMessage);
+  }).map(indexedToChatCompletionRequestMessage);
   const numTokens = numTokensFromMessages(inputMessages);
   const numCharacters = messagesLength(inputMessages);
   console.log("Messages tokens:", numTokens);
@@ -333,38 +357,42 @@ export async function createChatCompletionWithBackoff({
   }
   console.log("messages");
   console.log(messages);
-  const content: string | undefined = DEBUG ? text : await openai.createChatCompletion({
-    model: "gpt-3.5-turbo",
-    messages: inputMessages,
-    stop: stopWord,
-    temperature: 1,
-    max_tokens: 1000,
-    top_p: 0.5,
-  }).then((completion) => {
-    const [choice] = completion.data.choices;
-    return choice.message?.content;
-  }
-  ).catch(async (error) => {
-    if (logger != null) {
-      logger.error(error);
-    }
-    console.log(error);
-    if (error.response.status == 429) {
-      console.error(`Attempt failed. Retrying in ${delay}ms...`);
+  const content: string | undefined = DEBUG
+    ? text
+    : await openai
+        .createChatCompletion({
+          model: "gpt-3.5-turbo",
+          messages: inputMessages,
+          stop: stopWord,
+          temperature: 1,
+          max_tokens: 1000,
+          top_p: 0.5,
+        })
+        .then((completion) => {
+          const [choice] = completion.data.choices;
+          return choice.message?.content;
+        })
+        .catch(async (error) => {
+          if (logger != null) {
+            logger.error(error);
+          }
+          console.log(error);
+          if (error.response.status == 429) {
+            console.error(`Attempt failed. Retrying in ${delay}ms...`);
 
-      // Wait for the delay period and then retry
-      await new Promise((resolve) => setTimeout(resolve, delay));
+            // Wait for the delay period and then retry
+            await new Promise((resolve) => setTimeout(resolve, delay));
 
-      // Retry the operation, with a longer delay
-      return createChatCompletionWithBackoff({
-        messages,
-        stopWord,
-        delay: delay * 2,
-        model,
-        logger,
-      });
-    }
-  })
+            // Retry the operation, with a longer delay
+            return createChatCompletionWithBackoff({
+              messages,
+              stopWord,
+              delay: delay * 2,
+              model,
+              logger,
+            });
+          }
+        });
   if (content == null) {
     return `GPT-3 returned no content in reponse to ${numCharacters} characters of input.`;
   } else if (content.length == 0) {
