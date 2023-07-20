@@ -132,10 +132,10 @@ function factsToString(facts: string[]) {
 }
 
 async function performInferrence(facts: string[], proposition: string) {
-  const input = `Do the following facts:
+  const input = `Given the following facts:
 ${factsToString(facts)}}
 
-probably imply the proposition "${proposition}"? Let's think through this step by step.`;
+is the proposition "${proposition}" more likely to be true than false? Let's think through this step by step.`;
 
   const explanation = await complete({ input, model: gpt.four });
   const inferrence = await complete({
@@ -153,9 +153,9 @@ function inferrenceToBoolean(inferrence: string) {
   console.log("inferrence:", inferrence);
   const containsTrue = inferrence.includes("true");
   const containsFalse = inferrence.includes("false");
-  if (containsTrue && !containsFalse) {
+  if (inferrence.includes("true than false") || (containsTrue && !containsFalse)) {
     return true;
-  } else if (!containsTrue && containsFalse) {
+  } else if (inferrence.includes("false than true") || (!containsTrue && containsFalse)) {
     return false;
   }
   return null;
