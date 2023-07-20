@@ -225,6 +225,11 @@ async function promptNewFactIndex(length: number, userInput: string) {
 (You wrote: "${userInput}")`;
 }
 
+function currentFactsString(facts: string[]) {
+  return `${headerPrefix} Current facts
+${factsToString(facts)}}`;
+}
+
 async function handleUpdateSubcommand({
   factIndex,
   facts,
@@ -266,7 +271,10 @@ async function handleUpdateSubcommand({
 
   if (turn == 0) {
     return {
-      texts: texts.concat([getWinText({ win: false })]),
+      texts: texts.concat([
+        currentFactsString(updatedFacts),
+        getWinText({ win: false }),
+      ]),
       facts: updatedFacts,
       turn: turn + 1,
     };
@@ -288,6 +296,7 @@ async function handleUpdateSubcommand({
         inferrence: long.inferrence,
         explanation: long.explanation,
       }),
+      currentFactsString(updatedFacts),
       getWinText({ win }),
     ],
     facts: updatedFacts,
