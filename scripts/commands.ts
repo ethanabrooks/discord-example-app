@@ -208,14 +208,12 @@ async function handleUpdateSubcommand({
   factIndex,
   facts,
   proposition,
-  truth,
   turn,
   userInput,
 }: {
   factIndex: number;
   facts: string[];
   proposition: string;
-  truth: boolean;
   turn: number;
   userInput: string;
 }) {
@@ -228,7 +226,7 @@ async function handleUpdateSubcommand({
   const fact = facts[factIndex];
   const short = await performInferrence(newFacts, fact);
   const texts = [
-    getGroundTruthText({ facts: newFacts, proposition: fact, truth: true }),
+    getGroundTruthText({ facts: newFacts, proposition: fact }),
     getInferenceText({
       explanation: short.explanation,
       inferrence: short.inferrence,
@@ -247,7 +245,7 @@ async function handleUpdateSubcommand({
 
   if (turn == 0) {
     return {
-      texts: texts.concat([getWinText({ truth, newTruth: truth, win: false })]),
+      texts: texts.concat([getWinText({ win: false })]),
       facts: updatedFacts,
       turn: turn + 1,
     };
@@ -255,32 +253,32 @@ async function handleUpdateSubcommand({
 
   const long = await performInferrence(updatedFacts, proposition);
   const newTruth = inferrenceToBoolean(long.inferrence);
-  const win = newTruth != truth;
+  const win = !newTruth;
 
   return {
     texts: [
       "# Single-Step Reasoning",
       ...texts,
       "# Multi-Step Reasoning",
-      getGroundTruthText({ facts: updatedFacts, proposition, truth }),
+      getGroundTruthText({ facts: updatedFacts, proposition }),
       getInferenceText({
         factIndex,
         userInput,
         inferrence: long.inferrence,
         explanation: long.explanation,
       }),
-      getWinText({ truth, newTruth, win }),
+      getWinText({ win }),
     ],
     facts: updatedFacts,
     turn: turn + 1,
   };
 }
 
-function getGroundTruthText({ facts, proposition, truth }) {
+function getGroundTruthText({ facts, proposition }) {
   return `## Facts
 ${factsToString(facts)}
 ## Proposition
-${proposition.replace(/\.$/, "")}: **${truth}**`;
+${proposition}`;
 }
 
 function getInferenceText({
@@ -301,11 +299,8 @@ Inferrence: **${inferrence}**
 ${explanation}`;
 }
 
-function getWinText({ truth, newTruth, win }) {
-  return `## Status
-Previous inference: **${truth}**
-New inference: **${newTruth}**
-${win ? "# You win!" : "Keep playing."}`;
+function getWinText({ win }: { win: boolean }) {
+  return `${win ? "# You win!" : "## Keep playing."}`;
 }
 
 function getOptions(interaction: ChatInputCommandInteraction) {
@@ -343,8 +338,6 @@ export const Commands = [
           ),
       ),
     proposition: null,
-    negative: null,
-    truth: null,
     facts: [],
     players: [],
     turn: 0,
@@ -361,19 +354,19 @@ export const Commands = [
             this.players = getUsernames(members);
           }
           this.proposition = randomChoice(prompt.propositions);
-          this.truth = false; // randomBoolean();
-          console.log(this.truth);
-          if (!this.truth) {
-            this.negative = await negate(this.proposition);
+          const truth = false; // randomBoolean();
+          console.log(truth);
+          console.log("this.proposition", this.proposition);
+          if (!truth) {
+            this.proposition = await negate(this.proposition);
           }
-          const fact = this.truth ? this.proposition : this.negative;
-          this.facts = [fact];
+          this.facts = [this.proposition];
+          console.log("facts", this.facts);
           await handleInteraction({
             interaction,
             text: getGroundTruthText({
               facts: this.facts,
               proposition: this.proposition,
-              truth: this.truth,
             }),
           });
           break;
@@ -383,10 +376,9 @@ export const Commands = [
           const { texts, facts, turn } = await handleUpdateSubcommand({
             factIndex,
             facts: this.facts,
-            userInput,
             proposition,
-            truth: this.truth,
             turn: this.turn,
+            userInput,
           });
           const text = texts.join("\n");
           this.facts = facts;
