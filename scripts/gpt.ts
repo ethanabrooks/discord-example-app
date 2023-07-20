@@ -305,6 +305,8 @@ export async function complete({
   model?: string;
   logger?: Logger | null;
 }) {
+  console.log("input");
+  console.log(input);
   const messages: ChatCompletionRequestMessage[] = [
     { role: "user", content: input },
   ];
@@ -352,11 +354,10 @@ export async function createChatCompletionWithBackoff({
   const numCharacters = messagesLength(inputMessages);
   console.log("Messages tokens:", numTokens);
   console.log("Messages characters:", numCharacters);
+  console.log("Model:", model);
   if (logger != null) {
     logger.debug({ inputMessages });
   }
-  console.log("messages");
-  console.log(messages);
   const content: string | undefined = DEBUG
     ? text
     : await openai
