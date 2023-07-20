@@ -102,10 +102,10 @@ async function handleInteraction({
           return await (!firstReply
             ? interaction.followUp(reply)
             : channel.send(reply).catch((e) => {
-              catchError(e);
-              console.log("Giving up");
-              return;
-            }));
+                catchError(e);
+                console.log("Giving up");
+                return;
+              }));
         }),
   );
 }
@@ -153,9 +153,15 @@ function inferrenceToBoolean(inferrence: string) {
   console.log("inferrence:", inferrence);
   const containsTrue = inferrence.includes("true");
   const containsFalse = inferrence.includes("false");
-  if (inferrence.includes("true than false") || (containsTrue && !containsFalse)) {
+  if (
+    inferrence.includes("true than false") ||
+    (containsTrue && !containsFalse)
+  ) {
     return true;
-  } else if (inferrence.includes("false than true") || (!containsTrue && containsFalse)) {
+  } else if (
+    inferrence.includes("false than true") ||
+    (!containsTrue && containsFalse)
+  ) {
     return false;
   }
   return null;
