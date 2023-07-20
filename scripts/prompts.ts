@@ -102,6 +102,9 @@ export const initial =
 export const factPrefixes =
   "Take the following text and prefix each assertion with '\n[FACT]' or '\n[OPINION]' (break up sentences if necessary):";
 
+export const replacePronouns =
+  "Take the following text and replace each pronoun with its referent.";
+
 export const inferrence =
   "Who does the weight of the evidence point to as the culprit? Just write a name, nothing else.";
 

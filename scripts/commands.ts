@@ -21,7 +21,6 @@ import { Stream } from "form-data";
 import catchError from "./utils/errors.js";
 import { complete } from "./gpt.js";
 import * as prompt from "./prompts.js";
-import { threadId } from "worker_threads";
 
 const DEBUG = false;
 const BUILT_IN_RESPONSE_LIMIT = 2000;
@@ -103,10 +102,10 @@ async function handleInteraction({
           return await (!firstReply
             ? interaction.followUp(reply)
             : channel.send(reply).catch((e) => {
-                catchError(e);
-                console.log("Giving up");
-                return;
-              }));
+              catchError(e);
+              console.log("Giving up");
+              return;
+            }));
         }),
   );
 }
@@ -183,14 +182,29 @@ async function negate(text: string) {
   });
 }
 
-async function userInputToFactsList(text: string) {
-  const newFactsString = await complete({
-    input: `
-        ${prompt.factPrefixes}
-        ${text}`,
+async function userInputToFactsList(text: string, facts: string[]) {
+  const noPronouns = await complete({
+    input: `${prompt.replacePronouns}
+
+\`\`\`md
+# Original facts
+${factsToString(facts)}
+# New facts
+${text}
+\`\`\``,
     model: gpt.three,
   });
-  return splitFacts(newFactsString);
+  const [, noPronounsWithBackticks] = noPronouns.split(`
+# New facts`);
+  const [newFactString] = noPronounsWithBackticks.split(`
+\`\`\``);
+  const factsString = await complete({
+    input: `
+        ${prompt.factPrefixes}
+        ${newFactString}`,
+    model: gpt.three,
+  });
+  return splitFacts(factsString);
 }
 
 function validFactIndex(factIndex: number, length: number) {
@@ -222,7 +236,7 @@ async function handleUpdateSubcommand({
     return { text, facts, turn };
   }
 
-  const newFacts = await userInputToFactsList(userInput);
+  const newFacts = await userInputToFactsList(userInput, facts);
   const fact = facts[factIndex];
   const short = await performInferrence(newFacts, fact);
   const texts = [
