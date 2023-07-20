@@ -8,6 +8,7 @@ import { encode } from "gpt-3-encoder";
 
 import text from "./prompts/debug.js";
 import { Logger } from "pino";
+import catchError from "./utils/errors.js";
 
 const MODEL = "gpt-3.5-turbo-0301";
 export const DEBUG = false;
@@ -374,25 +375,20 @@ export async function createChatCompletionWithBackoff({
           return choice.message?.content;
         })
         .catch(async (error) => {
-          if (logger != null) {
-            logger.error(error);
-          }
-          console.log(error);
-          if (error.response.status == 429) {
-            console.error(`Attempt failed. Retrying in ${delay}ms...`);
+          catchError(error);
+          console.error(`Attempt failed. Retrying in ${delay}ms...`);
 
-            // Wait for the delay period and then retry
-            await new Promise((resolve) => setTimeout(resolve, delay));
+          // Wait for the delay period and then retry
+          await new Promise((resolve) => setTimeout(resolve, delay));
 
-            // Retry the operation, with a longer delay
-            return createChatCompletionWithBackoff({
-              messages,
-              stopWord,
-              delay: delay * 2,
-              model,
-              logger,
-            });
-          }
+          // Retry the operation, with a longer delay
+          return createChatCompletionWithBackoff({
+            messages,
+            stopWord,
+            delay: delay * 2,
+            model,
+            logger,
+          });
         });
   if (content == null) {
     return `GPT-3 returned no content in reponse to ${numCharacters} characters of input.`;
