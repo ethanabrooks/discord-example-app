@@ -368,7 +368,7 @@ export const Commands = [
             this.players = getUsernames(members);
           }
           this.proposition = randomChoice(prompt.propositions);
-          const truth = false; // randomBoolean();
+          const truth = randomBoolean();
           console.log(truth);
           console.log("this.proposition", this.proposition);
           if (!truth) {
