@@ -24,6 +24,7 @@ import * as prompt from "./prompts.js";
 
 const DEBUG = false;
 const BUILT_IN_RESPONSE_LIMIT = 2000;
+const headerPrefix = "###";
 
 function splitAtResponseLimit(text: string) {
   return [
@@ -255,7 +256,7 @@ async function handleUpdateSubcommand({
     }),
   ];
   if (!inferrenceToBoolean(short.inferrence)) {
-    return { texts: texts.concat(["### Try again!"]), facts, turn };
+    return { texts: texts.concat([`${headerPrefix} Try again!`]), facts, turn };
   }
 
   const updatedFacts = facts
@@ -295,9 +296,9 @@ async function handleUpdateSubcommand({
 }
 
 function getGroundTruthText({ facts, proposition }) {
-  return `## Facts
+  return `${headerPrefix} Facts
 ${factsToString(facts)}
-## Proposition
+${headerPrefix} Proposition
 _${proposition}_`;
 }
 
@@ -315,7 +316,7 @@ function getInferenceText({
   return `\
 The user changed fact ${factIndex + 1} to: _${userInput}_
 Inferrence: **${inferrence}**
-## Explanation
+${headerPrefix} Explanation
 ${explanation}`;
 }
 
