@@ -412,7 +412,7 @@ export const Commands = [
           });
           const text = texts.join("\n");
           this.facts = facts;
-          this.turn += turn;
+          this.turn = turn;
 
           return await handleInteraction({ interaction, text });
 
