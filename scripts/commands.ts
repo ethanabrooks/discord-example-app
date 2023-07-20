@@ -135,14 +135,14 @@ async function performInferrence(facts: string[], proposition: string) {
   const input = `Do the following facts:
 ${factsToString(facts)}}
 
-imply the proposition "${proposition}"? Let's think through this step by step.`;
+probably imply the proposition "${proposition}"? Let's think through this step by step.`;
 
   const explanation = await complete({ input, model: gpt.four });
   const inferrence = await complete({
     input: `${input}
 ${explanation}
 
-In conclusion, the proposition "${proposition}" is [true|false|indeterminate]`,
+In conclusion, the proposition "${proposition}" is probably [true|false|indeterminate]`,
     model: gpt.three,
   });
   return { explanation, inferrence };
@@ -292,7 +292,7 @@ function getGroundTruthText({ facts, proposition }) {
   return `## Facts
 ${factsToString(facts)}
 ## Proposition
-${proposition}`;
+_${proposition}_`;
 }
 
 function getInferenceText({
@@ -307,7 +307,7 @@ function getInferenceText({
   userInput: string;
 }) {
   return `\
-The user changed fact ${factIndex + 1} to "${userInput}".
+The user changed fact ${factIndex + 1} to: _${userInput}_
 Inferrence: **${inferrence}**
 ## Explanation
 ${explanation}`;
