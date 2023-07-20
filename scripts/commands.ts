@@ -203,6 +203,9 @@ ${text}
   });
   const [, noPronounsWithBackticks] = noPronouns.split(`
 # New facts`);
+  if (noPronounsWithBackticks == undefined) {
+    return await userInputToFactsList(text, facts);
+  }
   const [newFactString] = noPronounsWithBackticks.split(`
 \`\`\``);
   const factsString = await complete({
