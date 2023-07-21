@@ -20,7 +20,8 @@ import { buttons } from "./buttons.js";
 import { Stream } from "form-data";
 import catchError from "./utils/errors.js";
 import { complete } from "./gpt.js";
-import * as prompt from "./prompts.js";
+import propositions from "./propositions.js";
+import pronouns from "./pronouns.js";
 
 const DEBUG = false;
 const BUILT_IN_RESPONSE_LIMIT = 2000;
@@ -189,29 +190,10 @@ async function negate(text: string) {
   });
 }
 
-async function userInputToFactsList(text: string, facts: string[]) {
-  const noPronouns = await complete({
-    input: `${prompt.replacePronouns}
-
-\`\`\`md
-# Original facts
-${factsToString(facts)}
-# New facts
-${text}
-\`\`\``,
-    model: gpt.three,
-  });
-  const [, noPronounsWithBackticks] = noPronouns.split(`
-# New facts`);
-  if (noPronounsWithBackticks == undefined) {
-    return await userInputToFactsList(text, facts);
-  }
-  const [newFactString] = noPronounsWithBackticks.split(`
-\`\`\``);
+async function userInputToFactsList(text: string) {
   const factsString = await complete({
-    input: `
-        ${prompt.factPrefixes}
-        ${newFactString}`,
+    input: `Take the following text and prefix each assertion with '\n[FACT]' or '\n[OPINION]' (break up sentences if necessary):
+        ${text}`,
     model: gpt.three,
   });
   return splitFacts(factsString);
@@ -230,7 +212,7 @@ async function promptNewFactIndex(length: number, userInput: string) {
 
 function currentFactsString(facts: string[]) {
   return `${headerPrefix} Current facts
-${factsToString(facts)}}`;
+${factsToString(facts)}`;
 }
 
 async function handleUpdateSubcommand({
@@ -251,7 +233,14 @@ async function handleUpdateSubcommand({
     return { text, facts, turn };
   }
 
-  const newFacts = await userInputToFactsList(userInput, facts);
+  const newFacts = await userInputToFactsList(userInput);
+  const { valid, explanation } = await validateFacts([
+    proposition,
+    ...newFacts,
+  ]);
+  if (!valid) {
+    return { texts: [explanation, currentFactsString(facts)], facts, turn };
+  }
   const fact = facts[factIndex];
   const short = await performInferrence(newFacts, fact);
   const texts = [
@@ -264,7 +253,14 @@ async function handleUpdateSubcommand({
     }),
   ];
   if (!inferrenceToBoolean(short.inferrence)) {
-    return { texts: texts.concat([`${headerPrefix} Try again!`]), facts, turn };
+    return {
+      texts: texts.concat([
+        currentFactsString(facts),
+        `${headerPrefix} Try again!`,
+      ]),
+      facts,
+      turn,
+    };
   }
 
   const updatedFacts = facts
@@ -386,7 +382,7 @@ export const Commands = [
           } else {
             this.players = getUsernames(members);
           }
-          this.proposition = randomChoice(prompt.propositions);
+          this.proposition = randomChoice(propositions);
           const truth = randomBoolean();
           console.log(truth);
           console.log("this.proposition", this.proposition);
@@ -425,3 +421,19 @@ export const Commands = [
     },
   },
 ];
+async function validateFacts(
+  facts: string[],
+): Promise<{ valid: boolean; explanation: string }> {
+  const query = `${factsToString(facts)}
+Issues:`;
+  const completion = await complete({
+    input: `${pronouns}
+    
+${query}`,
+  });
+  const valid = completion == "none";
+  const explanation = `${headerPrefix} Invalid use of pronouns
+${query} ${completion}`;
+
+  return { valid, explanation };
+}

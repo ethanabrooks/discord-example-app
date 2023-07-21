@@ -1,4 +1,4 @@
-export const propositions = [
+export default [
   "The cup is made of paper",
   "The grass is wet",
   "The dog was walked an hour ago",
@@ -96,8 +96,3 @@ export const propositions = [
   "The grocery store aisle is crowded",
   "The phone has a cracked screen protector",
 ];
-export const factPrefixes =
-  "Take the following text and prefix each assertion with '\n[FACT]' or '\n[OPINION]' (break up sentences if necessary):";
-
-export const replacePronouns =
-  "Take the following text and replace each pronoun with its referent.";
