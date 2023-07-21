@@ -133,35 +133,35 @@ function factsToString(facts: string[]) {
   return facts.map((fact, index) => `${index + 1}. ${fact}`).join("\n");
 }
 
-async function performInferrence(facts: string[], proposition: string) {
+async function performInference(facts: string[], proposition: string) {
   const input = `Given the following facts:
 ${factsToString(facts)}}
 
 is the proposition "${proposition}" more likely to be true than false? Let's think through this step by step.`;
 
   const explanation = await complete({ input, model: gpt.four });
-  const inferrence = await complete({
+  const inference = await complete({
     input: `${input}
 ${explanation}
 
 In conclusion, the proposition "${proposition}" is probably [true|false|indeterminate]`,
     model: gpt.three,
   });
-  return { explanation, inferrence };
+  return { explanation, inference };
 }
 
-function inferrenceToBoolean(inferrence: string) {
-  inferrence = inferrence.toLowerCase();
-  console.log("inferrence:", inferrence);
-  const containsTrue = inferrence.includes("true");
-  const containsFalse = inferrence.includes("false");
+function inferenceToBoolean(inference: string) {
+  inference = inference.toLowerCase();
+  console.log("inference:", inference);
+  const containsTrue = inference.includes("true");
+  const containsFalse = inference.includes("false");
   if (
-    inferrence.includes("true than false") ||
+    inference.includes("true than false") ||
     (containsTrue && !containsFalse)
   ) {
     return true;
   } else if (
-    inferrence.includes("false than true") ||
+    inference.includes("false than true") ||
     (!containsTrue && containsFalse)
   ) {
     return false;
@@ -242,17 +242,17 @@ async function handleUpdateSubcommand({
     return { texts: [explanation, currentFactsString(facts)], facts, turn };
   }
   const fact = facts[factIndex];
-  const short = await performInferrence(newFacts, fact);
+  const short = await performInference(newFacts, fact);
   const texts = [
     getGroundTruthText({ facts: newFacts, proposition: fact }),
     getInferenceText({
       explanation: short.explanation,
-      inferrence: short.inferrence,
+      inference: short.inference,
       factIndex,
       userInput,
     }),
   ];
-  if (!inferrenceToBoolean(short.inferrence)) {
+  if (!inferenceToBoolean(short.inference)) {
     return {
       texts: texts.concat([
         currentFactsString(facts),
@@ -279,8 +279,8 @@ async function handleUpdateSubcommand({
     };
   }
 
-  const long = await performInferrence(updatedFacts, proposition);
-  const newTruth = inferrenceToBoolean(long.inferrence);
+  const long = await performInference(updatedFacts, proposition);
+  const newTruth = inferenceToBoolean(long.inference);
   const win = !newTruth;
 
   return {
@@ -292,7 +292,7 @@ async function handleUpdateSubcommand({
       getInferenceText({
         factIndex,
         userInput,
-        inferrence: long.inferrence,
+        inference: long.inference,
         explanation: long.explanation,
       }),
       currentFactsString(updatedFacts),
@@ -313,17 +313,17 @@ _${proposition}_`;
 function getInferenceText({
   explanation,
   factIndex,
-  inferrence,
+  inference,
   userInput,
 }: {
   explanation: string;
   factIndex: number;
-  inferrence: string;
+  inference: string;
   userInput: string;
 }) {
   return `\
 The user changed fact ${factIndex + 1} to: _${userInput}_
-Inferrence: **${inferrence}**
+inference: **${inference}**
 ${headerPrefix} Explanation
 ${explanation}`;
 }
