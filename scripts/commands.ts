@@ -23,9 +23,13 @@ import { complete } from "./gpt.js";
 import propositions from "./propositions.js";
 import pronouns from "./pronouns.js";
 
-const DEBUG = false;
 const BUILT_IN_RESPONSE_LIMIT = 2000;
 const headerPrefix = "###";
+const tryAgainText = `${headerPrefix} Try again!`;
+const keepPlayingText = `${headerPrefix} Keep playing.`;
+const winText = "# You win!";
+
+type Status = "win" | "try again" | "continue";
 
 function splitAtResponseLimit(text: string) {
   return [
@@ -133,7 +137,7 @@ function factsToString(facts: string[]) {
   return facts.map((fact, index) => `${index + 1}. ${fact}`).join("\n");
 }
 
-async function performInference(facts: string[], proposition: string) {
+async function infer(facts: string[], proposition: string) {
   const input = `Given the following facts:
 ${factsToString(facts)}}
 
@@ -148,6 +152,22 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
     model: gpt.three,
   });
   return { explanation, inference };
+}
+
+async function getInferenceResult({
+  facts,
+  proposition,
+}: {
+  facts: string[];
+  proposition: string;
+}) {
+  const { explanation, inference } = await infer(facts, proposition);
+  const texts = [
+    getInferenceSetupText({ facts, proposition }),
+    getInferenceText({ explanation, inference }),
+  ];
+  const success = inferenceToBoolean(inference);
+  return { texts, success };
 }
 
 function inferenceToBoolean(inference: string) {
@@ -190,7 +210,7 @@ async function negate(text: string) {
   });
 }
 
-async function userInputToFactsList(text: string) {
+async function userInputToFacts(text: string) {
   const factsString = await complete({
     input: `Take the following text and prefix each assertion with '\n[FACT]' or '\n[OPINION]' (break up sentences if necessary):
         ${text}`,
@@ -210,9 +230,21 @@ async function promptNewFactIndex(length: number, userInput: string) {
 (You wrote: "${userInput}")`;
 }
 
-function currentFactsString(facts: string[]) {
-  return `${headerPrefix} Current facts
-${factsToString(facts)}`;
+function insert<Type>({
+  array,
+  index,
+  elements,
+  replace,
+}: {
+  array: Type[];
+  index: number;
+  elements: Type[];
+  replace: boolean;
+}) {
+  return array
+    .slice(0, index)
+    .concat(elements)
+    .concat(array.slice(replace ? index + 1 : index));
 }
 
 async function handleUpdateSubcommand({
@@ -230,76 +262,104 @@ async function handleUpdateSubcommand({
 }) {
   if (validFactIndex(factIndex, facts.length)) {
     const text = await promptNewFactIndex(facts.length, userInput);
-    return { text, facts, turn };
+    return { texts: [text], facts, turn };
+  }
+
+  const userFacts = await userInputToFacts(userInput);
+  const fact = facts[factIndex];
+
+  const updatedFacts = insert({
+    array: facts,
+    index: factIndex,
+    elements: userFacts,
+    replace: true,
+  });
+  const allFacts = insert({
+    array: facts,
+    index: factIndex,
+    elements: userFacts,
+    replace: false,
+  });
+  function turnResult({
+    status,
+    texts,
+    comment = null,
+  }: {
+    status: Status;
+    texts: string[];
+    comment?: string | null;
+  }) {
+    let statusText: string;
+    let resultTurn: number = turn + 1;
+    let resultFacts: string[] = updatedFacts;
+    switch (status) {
+      case "try again":
+        statusText = tryAgainText;
+        resultFacts = facts;
+        resultTurn = turn;
+        break;
+      case "continue":
+        statusText = keepPlayingText;
+        break;
+      case "win":
+        statusText = winText;
+        break;
+      default:
+        throw new Error(`Invalid status: ${status}`);
+    }
+
+    return {
+      texts: [...texts, statusText].concat(comment ? [comment] : []),
+      facts: resultFacts,
+      turn: resultTurn,
+    };
+  }
+
+  const oneStep = await getInferenceResult({ facts: userFacts, proposition });
+  if (!oneStep.success) {
+    return turnResult({
+      status: "try again",
+      texts: oneStep.texts,
+      comment: "New facts must imply replaced fact.",
+    });
   }
 
   if (turn == 0) {
-    return {
-      texts: texts.concat([
-        currentFactsString(updatedFacts),
-        getWinText({ win: false }),
-      ]),
-      facts: updatedFacts,
-      turn: turn + 1,
-    };
+    return turnResult({
+      status: "continue",
+      texts: oneStep.texts,
+    });
   }
-
-  const newFacts = await userInputToFactsList(userInput);
-  const fact = facts[factIndex];
-
-  async function checkFacts(facts: string[], proposition: string) {
-    const inference = await performInference(facts, proposition);
-    const texts = [
-      getGroundTruthText({ facts: facts, proposition }),
-      getInferenceText({
-        explanation: inference.explanation,
-        inference: inference.inference,
-        factIndex,
-        userInput,
-      }),
-    ];
-    const success = inferenceToBoolean(inference.inference);
-    const onFail = {
-      texts: texts.concat([
-        currentFactsString(facts),
-        `${headerPrefix} Try again!`,
-      ]),
-      facts,
-      turn,
-    };
-    return { success, onFail };
+  const conditionedOnAll = await getInferenceResult({
+    facts: allFacts,
+    proposition: fact,
+  });
+  if (!conditionedOnAll.success) {
+    return turnResult({
+      status: "try again",
+      texts: conditionedOnAll.texts,
+      comment: "Collectively, all facts must imply proposition.",
+    });
   }
-
-  const updatedFacts = facts
-    .slice(0, factIndex)
-    .concat(newFacts)
-    .concat(facts.slice(factIndex + 1));
-
-  const long = await performInference(updatedFacts, proposition);
-  const newTruth = inferenceToBoolean(long.inference);
-  const win = !newTruth;
-
-  return {
-    texts: [
-      "# Single-Step Reasoning",
-      ...texts,
-      "# Multi-Step Reasoning",
-      getGroundTruthText({ facts: updatedFacts, proposition }),
-      getInferenceText({
-        factIndex,
-        userInput,
-        inference: long.inference,
-        explanation: long.explanation,
-      }),
-      currentFactsString(updatedFacts),
-      getWinText({ win }),
-    ],
+  const conditionedOnUpdated = await getInferenceResult({
     facts: updatedFacts,
-    turn: turn + 1,
-  };
+    proposition: fact,
+  });
+  const status = conditionedOnUpdated.success ? "continue" : "win";
+  return turnResult({
+    status,
+    texts: [
+      ...oneStep.texts,
+      ...conditionedOnAll.texts,
+      ...conditionedOnUpdated.texts,
+    ],
+    comment: conditionedOnUpdated.success
+      ? "You broke the chain! GPT couldn't infer the proposition from the updated facts."
+      : "Proposition still follows from updated facts.",
+  });
 }
 
-function getGroundTruthText({ facts, proposition }) {
+function getInferenceSetupText({ facts, proposition }) {
   return `${headerPrefix} Facts
 ${factsToString(facts)}
 ${headerPrefix} Proposition
@@ -308,24 +368,15 @@ _${proposition}_`;
 
 function getInferenceText({
   explanation,
-  factIndex,
   inference,
-  userInput,
 }: {
   explanation: string;
-  factIndex: number;
   inference: string;
-  userInput: string;
 }) {
   return `\
-The user changed fact ${factIndex + 1} to: _${userInput}_
 inference: **${inference}**
 ${headerPrefix} Explanation
 ${explanation}`;
-}
-
-function getWinText({ win }: { win: boolean }) {
-  return `${win ? "# You win!" : "## Keep playing."}`;
 }
 
 function getOptions(interaction: ChatInputCommandInteraction) {
@@ -389,7 +440,7 @@ export const Commands = [
           console.log("facts", this.facts);
           await handleInteraction({
             interaction,
-            text: getGroundTruthText({
+            text: getInferenceSetupText({
               facts: this.facts,
               proposition: this.proposition,
             }),
@@ -398,6 +449,9 @@ export const Commands = [
         case subcommands.update:
           const proposition = this.proposition;
           const { factIndex, userInput } = getOptions(interaction);
+          const whatYouDid = `You replaced fact ${
+            factIndex + 1
+          } with "${userInput}"`;
           const { texts, facts, turn } = await handleUpdateSubcommand({
             factIndex,
             facts: this.facts,
@@ -405,7 +459,7 @@ export const Commands = [
             turn: this.turn,
             userInput,
           });
-          const text = texts.join("\n");
+          const text = [whatYouDid].concat(texts).join("\n");
           this.facts = facts;
           this.turn = turn;
 
