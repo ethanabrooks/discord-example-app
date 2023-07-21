@@ -233,41 +233,6 @@ async function handleUpdateSubcommand({
     return { text, facts, turn };
   }
 
-  const newFacts = await userInputToFactsList(userInput);
-  const { valid, explanation } = await validateFacts([
-    proposition,
-    ...newFacts,
-  ]);
-  if (!valid) {
-    return { texts: [explanation, currentFactsString(facts)], facts, turn };
-  }
-  const fact = facts[factIndex];
-  const short = await performInference(newFacts, fact);
-  const texts = [
-    getGroundTruthText({ facts: newFacts, proposition: fact }),
-    getInferenceText({
-      explanation: short.explanation,
-      inference: short.inference,
-      factIndex,
-      userInput,
-    }),
-  ];
-  if (!inferenceToBoolean(short.inference)) {
-    return {
-      texts: texts.concat([
-        currentFactsString(facts),
-        `${headerPrefix} Try again!`,
-      ]),
-      facts,
-      turn,
-    };
-  }
-
-  const updatedFacts = facts
-    .slice(0, factIndex)
-    .concat(newFacts)
-    .concat(facts.slice(factIndex + 1));
-
   if (turn == 0) {
     return {
       texts: texts.concat([
@@ -278,6 +243,37 @@ async function handleUpdateSubcommand({
       turn: turn + 1,
     };
   }
+
+  const newFacts = await userInputToFactsList(userInput);
+  const fact = facts[factIndex];
+
+  async function checkFacts(facts: string[], proposition: string) {
+    const inference = await performInference(facts, proposition);
+    const texts = [
+      getGroundTruthText({ facts: facts, proposition }),
+      getInferenceText({
+        explanation: inference.explanation,
+        inference: inference.inference,
+        factIndex,
+        userInput,
+      }),
+    ];
+    const success = inferenceToBoolean(inference.inference);
+    const onFail = {
+      texts: texts.concat([
+        currentFactsString(facts),
+        `${headerPrefix} Try again!`,
+      ]),
+      facts,
+      turn,
+    };
+    return { success, onFail };
+  }
+
+  const updatedFacts = facts
+    .slice(0, factIndex)
+    .concat(newFacts)
+    .concat(facts.slice(factIndex + 1));
 
   const long = await performInference(updatedFacts, proposition);
   const newTruth = inferenceToBoolean(long.inference);
