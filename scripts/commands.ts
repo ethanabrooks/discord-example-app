@@ -22,13 +22,23 @@ import { Stream } from "form-data";
 import catchError from "./utils/errors.js";
 import { complete } from "./gpt.js";
 import propositions from "./propositions.js";
-import pronouns from "./pronouns.js";
 
 const BUILT_IN_RESPONSE_LIMIT = 2000;
 const headerPrefix = "###";
 const tryAgainText = `${headerPrefix} Try again!`;
 const keepPlayingText = `${headerPrefix} Keep playing.`;
 const winText = "# You win!";
+type Threads = {
+  oneStep?: string[];
+  coherence?: string[];
+  multiStep?: string[];
+};
+
+const threadNames = {
+  oneStep: "Reasoning for single-step inference",
+  coherence: "Reasoning for coherence inference",
+  multiStep: "Reasoning for multi-step inference",
+};
 
 type Status = "win" | "try again" | "continue";
 
@@ -41,12 +51,10 @@ function splitAtResponseLimit(text: string) {
 
 async function handleInteraction({
   interaction,
-  text,
   firstReply = true,
   files = [],
+  message,
 }: {
-  interaction: CommandInteraction;
-  text: string;
   firstReply?: boolean;
   files?: (
     | BufferResolvable
@@ -56,8 +64,10 @@ async function handleInteraction({
     | AttachmentBuilder
     | AttachmentPayload
   )[];
+  interaction: CommandInteraction;
+  message: string;
 }) {
-  const [content, excess] = splitAtResponseLimit(text);
+  const [content, excess] = splitAtResponseLimit(message);
   const button = new ButtonBuilder()
     .setCustomId(buttons.reveal.id)
     .setLabel("Response cut off. Click to reveal")
@@ -88,7 +98,7 @@ async function handleInteraction({
             case buttons.reveal.id:
               acknowledgeAndremoveButtons();
               handleInteraction({
-                text: excess,
+                message: excess,
                 interaction,
                 firstReply,
               });
@@ -246,8 +256,8 @@ async function handleUpdateSubcommand({
 }): Promise<{
   facts: string[];
   selection: boolean[];
-  texts: string[];
-  threads: { [channelName: string]: string };
+  messages: string[];
+  threads: Threads;
   turn: number;
 }> {
   if (validFactIndex(factIndex, facts.length)) {
@@ -255,7 +265,7 @@ async function handleUpdateSubcommand({
     return {
       facts,
       selection,
-      texts: [text, getStatusText("try again")],
+      messages: [text, getStatusText("try again")],
       threads: {},
       turn,
     };
@@ -275,11 +285,11 @@ ${facts}`);
 
   function turnResult({
     status,
-    texts,
+    threads,
     comment = null,
   }: {
     status: Status;
-    texts: string[];
+    threads: Threads;
     comment?: string | null;
   }) {
     const resultFacts = goToNextTurn(status) ? updatedFacts : facts;
@@ -287,8 +297,7 @@ ${facts}`);
     return {
       facts: resultFacts,
       selection: resultSelection,
-      texts: [
-        ...texts,
+      messages: [
         getInferenceSetupText({
           facts: resultFacts,
           selection: resultSelection,
@@ -296,7 +305,7 @@ ${facts}`);
         }),
         getStatusText(status),
       ].concat(comment ? [comment] : []),
-      threads: {},
+      threads,
       turn: turn + +goToNextTurn(status),
     };
   }
@@ -334,19 +343,23 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
       throw new Error("Proposition is undefined");
     }
     if (selection.length != updatedFacts.length) {
+      console.log("selection");
+      console.log(selection);
+      console.log("facts");
+      console.log(facts);
       throw new Error(
-        `Expected selection length ${selection.length} to equal facts length ${facts.length}`,
+        `Expected selection length ${selection.length} to equal facts length ${facts.length}.`,
       );
     }
     console.log("selection", selection);
     console.log("updatedFacts", updatedFacts);
     const { explanation, inference } = await infer(selection, proposition);
-    const texts = [
+    const paragraphs = [
       getInferenceSetupText({ facts: updatedFacts, proposition, selection }),
       getInferenceText({ explanation, inference }),
     ];
     const success = inferenceToBoolean(inference);
-    return { texts, success };
+    return { paragraphs, success };
   }
 
   const oneStep = await getInferenceResult({
@@ -356,7 +369,7 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
   if (!oneStep.success) {
     return turnResult({
       status: "try again",
-      texts: oneStep.texts,
+      threads: { oneStep: oneStep.paragraphs },
       comment: "New facts must imply replaced fact.",
     });
   }
@@ -364,18 +377,21 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
   if (turn == 0) {
     return turnResult({
       status: "continue",
-      texts: oneStep.texts,
+      threads: { oneStep: oneStep.paragraphs },
     });
   }
   const [, selectionTail] = fill(facts.concat(userFacts), true);
-  const conditionedOnAll = await getInferenceResult({
+  const coherence = await getInferenceResult({
     selection: [false].concat(selectionTail),
     proposition,
   });
-  if (!conditionedOnAll.success) {
+  if (!coherence.success) {
     return turnResult({
       status: "try again",
-      texts: conditionedOnAll.texts,
+      threads: {
+        oneStep: oneStep.paragraphs,
+        coherence: coherence.paragraphs,
+      },
       comment: "Collectively, all facts must imply proposition.",
     });
   }
@@ -386,11 +402,11 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
   const status = conditionedOnUpdated.success ? "continue" : "win";
   return turnResult({
     status,
-    texts: [
-      ...oneStep.texts,
-      ...conditionedOnAll.texts,
-      ...conditionedOnUpdated.texts,
-    ],
+    threads: {
+      oneStep: oneStep.paragraphs,
+      coherence: coherence.paragraphs,
+      multiStep: conditionedOnUpdated.paragraphs,
+    },
     comment: conditionedOnUpdated.success
       ? "Proposition still follows from updated facts."
       : "You broke the chain! GPT couldn't infer the proposition from the updated facts.",
@@ -450,20 +466,24 @@ function getOptions(interaction: ChatInputCommandInteraction) {
   return { factIndex, userInput };
 }
 
+function threadsToObjects(threads: Threads) {
+  return Object.entries(threads).map(([key, value]: [string, string[]]) => ({
+    name: threadNames[key],
+    explanation: value.join("\n"),
+  }));
+}
+
 async function handleThreads(
   channel: TextChannel,
-  explanations: { [channelName: string]: string },
+  threads: { name; explanation }[],
 ) {
-  return await Object.entries(explanations).forEach(
-    async ([explanation, name]) => {
-      const thread = await channel.threads.create({
-        name,
-        autoArchiveDuration: 60,
-        reason: "Give explanations for GPT's inferences.",
-      });
-      return await thread.send(explanation);
-    },
-  );
+  return await threads.forEach(async ({ name, explanation }) => {
+    const thread = await channel.threads.create({
+      name,
+      autoArchiveDuration: 60,
+    });
+    return await thread.send(explanation);
+  });
 }
 
 // Create commands
@@ -529,7 +549,7 @@ export const Commands = [
 
           await handleInteraction({
             interaction,
-            text: getInferenceSetupText({
+            message: getInferenceSetupText({
               facts: this.facts,
               proposition,
               selection: this.selection,
@@ -539,7 +559,7 @@ export const Commands = [
         case subcommands.update:
           const { factIndex, userInput } = getOptions(interaction);
           const whatYouDid = `You replaced fact ${factIndex} with "${userInput}"`;
-          const { facts, selection, texts, threads, turn } =
+          const { facts, messages, selection, threads, turn } =
             await handleUpdateSubcommand({
               factIndex,
               selection: this.selection,
@@ -547,16 +567,16 @@ export const Commands = [
               turn: this.turn,
               userInput,
             });
-          const text = [whatYouDid].concat(texts).join("\n");
+          const message = [whatYouDid].concat(messages).join("\n");
           this.facts = facts;
           this.selection = selection;
           this.turn = turn;
 
           if (interaction.channel instanceof TextChannel) {
-            await handleThreads(interaction.channel, threads);
+            await handleThreads(interaction.channel, threadsToObjects(threads));
           }
 
-          return await handleInteraction({ interaction, text });
+          return await handleInteraction({ interaction, message });
 
         default:
           break;
