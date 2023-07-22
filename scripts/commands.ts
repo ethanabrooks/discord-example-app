@@ -15,6 +15,7 @@ import {
   ThreadMemberManager,
   ChatInputCommandInteraction,
   ButtonStyle,
+  TextChannel,
 } from "discord.js";
 import { buttons } from "./buttons.js";
 import { Stream } from "form-data";
@@ -68,10 +69,6 @@ async function handleInteraction({
 
   const reply = { content, components, files };
   const channel = interaction.channel;
-  if (channel == null) {
-    throw Error("Cannot send message to null channel");
-  }
-
   // Update reply
   await (firstReply ? interaction.followUp(reply) : channel.send(reply)).then(
     (response) =>
@@ -247,17 +244,19 @@ async function handleUpdateSubcommand({
   turn: number;
   userInput: string;
 }): Promise<{
-  texts: string[];
   facts: string[];
   selection: boolean[];
+  texts: string[];
+  threads: { [channelName: string]: string };
   turn: number;
 }> {
   if (validFactIndex(factIndex, facts.length)) {
     const text = await promptNewFactIndex(facts.length, userInput);
     return {
-      texts: [text, getStatusText("try again")],
       facts,
       selection,
+      texts: [text, getStatusText("try again")],
+      threads: {},
       turn,
     };
   }
@@ -286,6 +285,8 @@ ${facts}`);
     const resultFacts = goToNextTurn(status) ? updatedFacts : facts;
     const resultSelection = goToNextTurn(status) ? updatedSelection : selection;
     return {
+      facts: resultFacts,
+      selection: resultSelection,
       texts: [
         ...texts,
         getInferenceSetupText({
@@ -295,8 +296,7 @@ ${facts}`);
         }),
         getStatusText(status),
       ].concat(comment ? [comment] : []),
-      facts: resultFacts,
-      selection: resultSelection,
+      threads: {},
       turn: turn + +goToNextTurn(status),
     };
   }
@@ -450,6 +450,22 @@ function getOptions(interaction: ChatInputCommandInteraction) {
   return { factIndex, userInput };
 }
 
+async function handleThreads(
+  channel: TextChannel,
+  explanations: { [channelName: string]: string },
+) {
+  return await Object.entries(explanations).forEach(
+    async ([explanation, name]) => {
+      const thread = await channel.threads.create({
+        name,
+        autoArchiveDuration: 60,
+        reason: "Give explanations for GPT's inferences.",
+      });
+      return await thread.send(explanation);
+    },
+  );
+}
+
 // Create commands
 export const Commands = [
   {
@@ -481,6 +497,11 @@ export const Commands = [
     facts: [],
     players: [],
     selection: [],
+    threads: {
+      oneStep: null,
+      coherence: null,
+      multiStep: null,
+    },
     turn: 0,
     async execute(interaction: ChatInputCommandInteraction) {
       await interaction.deferReply();
@@ -501,6 +522,11 @@ export const Commands = [
             : await negate(positiveProposition);
           this.facts = [proposition];
           this.selection = [true];
+          const channel = interaction.channel;
+          if (channel == null) {
+            throw Error("Cannot send message to null channel");
+          }
+
           await handleInteraction({
             interaction,
             text: getInferenceSetupText({
@@ -513,7 +539,7 @@ export const Commands = [
         case subcommands.update:
           const { factIndex, userInput } = getOptions(interaction);
           const whatYouDid = `You replaced fact ${factIndex} with "${userInput}"`;
-          const { facts, selection, texts, turn } =
+          const { facts, selection, texts, threads, turn } =
             await handleUpdateSubcommand({
               factIndex,
               selection: this.selection,
@@ -525,6 +551,10 @@ export const Commands = [
           this.facts = facts;
           this.selection = selection;
           this.turn = turn;
+
+          if (interaction.channel instanceof TextChannel) {
+            await handleThreads(interaction.channel, threads);
+          }
 
           return await handleInteraction({ interaction, text });
 
