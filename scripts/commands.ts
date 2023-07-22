@@ -33,6 +33,10 @@ type Threads = {
   coherence?: string[];
   multiStep?: string[];
 };
+type Selection = {
+  fact: string;
+  selected: boolean;
+};
 
 const threadNames = {
   oneStep: "Reasoning for single-step inference",
@@ -224,64 +228,69 @@ function goToNextTurn(status: Status) {
   }
 }
 
-function fill<Type>(array: any[], value: Type): Type[] {
-  return array.map(() => value);
+function getFact(input: Selection | string) {
+  return typeof input == "string" ? input : input.fact;
 }
 
-function zip<A, B>(a: A[], b: B[]): [A, B][] {
-  return a.map((k, i) => [k, b[i]]);
+function select(input: Selection | string) {
+  const fact = getFact(input);
+  return { fact, selected: true };
 }
 
-function selectionText(selection: boolean[]) {
-  const indices = selection.flatMap((selected, i) => (selected ? [i + 1] : []));
+function deselect(input: Selection | string) {
+  const fact = getFact(input);
+  return { fact, selected: false };
+}
+
+function indicesText(selected: boolean[]) {
+  const indices = selected.flatMap((selected, i) => (selected ? [i + 1] : []));
   const last = indices.pop();
   if (indices.length == 0) {
-    return `Does fact ${last}`;
+    return `${last}`;
   }
-  return "Do facts " + indices.join(", ") + ` and ${last}`;
+  return indices.join(", ") + ` and ${last}`;
 }
 
 async function handleUpdateSubcommand({
   factIndex,
-  facts,
-  selection,
+  selections: selections,
   turn,
   userInput,
 }: {
   factIndex: number;
-  facts: string[];
-  selection: boolean[];
+  selections: Selection[];
   turn: number;
   userInput: string;
 }): Promise<{
-  facts: string[];
-  selection: boolean[];
   messages: string[];
+  selections: Selection[];
   threads: Threads;
   turn: number;
 }> {
-  if (validFactIndex(factIndex, facts.length)) {
-    const text = await promptNewFactIndex(facts.length, userInput);
+  if (validFactIndex(factIndex, selections.length)) {
+    const text = await promptNewFactIndex(selections.length, userInput);
     return {
-      facts,
-      selection,
+      selections,
       messages: [text, getStatusText("try again")],
       threads: {},
       turn,
     };
   }
 
+  const facts = selections.map(getFact);
   const [proposition] = facts;
   const userFacts = await userInputToFacts(userInput);
-  const fact = facts[factIndex - 1];
-  if (fact == undefined) {
+  const replace = selections[factIndex - 1];
+  if (replace == undefined) {
     throw new Error(`Fact at index ${factIndex} is undefined. Facts:
-${facts}`);
+${selections}`);
   }
-  const updatedFacts = facts.concat(userFacts);
-  const updatedSelection = selection
-    .map((_, i) => i > 0 && i + 1 != factIndex)
-    .concat(fill(userFacts, true));
+  const tentative = selections
+    .map(({ fact }, index) => ({
+      fact,
+      selected: index + 1 != factIndex, // deselect fact at factIndex
+    }))
+    .concat(userFacts.map(select)); // select all userFacts
 
   function turnResult({
     status,
@@ -292,15 +301,12 @@ ${facts}`);
     threads: Threads;
     comment?: string | null;
   }) {
-    const resultFacts = goToNextTurn(status) ? updatedFacts : facts;
-    const resultSelection = goToNextTurn(status) ? updatedSelection : selection;
+    const updated = goToNextTurn(status) ? tentative : selections;
     return {
-      facts: resultFacts,
-      selection: resultSelection,
+      selections: updated,
       messages: [
         getInferenceSetupText({
-          facts: resultFacts,
-          selection: resultSelection,
+          selections: updated,
           proposition,
         }),
         getStatusText(status),
@@ -310,16 +316,18 @@ ${facts}`);
     };
   }
 
-  async function infer(selection: boolean[], proposition: string) {
+  async function infer(selections: Selection[], proposition: string) {
     if (proposition == undefined) {
       throw new Error("Proposition is undefined");
     }
+    const indices = indicesText(selections.map(({ selected }) => selected));
+    const facts = factsToString(selections.map(getFact));
     const input = `Consider the following facts:
-${factsToString(updatedFacts)}
+${facts}
 
-${selectionText(
-  selection,
-)} imply "${proposition}"? Let's think through this step by step.`;
+${
+  selections.length == 1 ? "Does fact" : "Do facts"
+} ${indices} imply "${proposition}"? Let's think through this step by step.`;
 
     const explanation = await complete({ input, model: gpt.four });
     const inference = await complete({
@@ -333,29 +341,18 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
   }
 
   async function getInferenceResult({
-    selection,
+    selections,
     proposition,
   }: {
-    selection: boolean[];
+    selections: Selection[];
     proposition: string;
   }) {
     if (proposition == undefined) {
       throw new Error("Proposition is undefined");
     }
-    if (selection.length != updatedFacts.length) {
-      console.log("selection");
-      console.log(selection);
-      console.log("facts");
-      console.log(facts);
-      throw new Error(
-        `Expected selection length ${selection.length} to equal facts length ${facts.length}.`,
-      );
-    }
-    console.log("selection", selection);
-    console.log("updatedFacts", updatedFacts);
-    const { explanation, inference } = await infer(selection, proposition);
+    const { explanation, inference } = await infer(selections, proposition);
     const paragraphs = [
-      getInferenceSetupText({ facts: updatedFacts, proposition, selection }),
+      getInferenceSetupText({ selections: tentative, proposition }),
       getInferenceText({ explanation, inference }),
     ];
     const success = inferenceToBoolean(inference);
@@ -363,8 +360,8 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
   }
 
   const oneStep = await getInferenceResult({
-    selection: fill(facts, false).concat(fill(userFacts, true)),
-    proposition: fact,
+    selections: [...selections.map(deselect), ...userFacts.map(select)],
+    proposition,
   });
   if (!oneStep.success) {
     return turnResult({
@@ -380,9 +377,12 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
       threads: { oneStep: oneStep.paragraphs },
     });
   }
-  const [, selectionTail] = fill(facts.concat(userFacts), true);
+  const [head, ...tail]: Selection[] = [
+    ...selections.map(select),
+    ...userFacts.map(select),
+  ];
   const coherence = await getInferenceResult({
-    selection: [false].concat(selectionTail),
+    selections: [deselect(head), ...tail],
     proposition,
   });
   if (!coherence.success) {
@@ -396,8 +396,8 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
     });
   }
   const conditionedOnUpdated = await getInferenceResult({
-    selection: updatedSelection,
-    proposition: fact,
+    selections: tentative,
+    proposition: replace.fact,
   });
   const status = conditionedOnUpdated.success ? "continue" : "win";
   return turnResult({
@@ -418,18 +418,16 @@ function bold(text: string) {
 }
 
 function getInferenceSetupText({
-  facts,
-  selection,
+  selections,
   proposition,
 }: {
-  facts: string[];
-  selection: boolean[];
+  selections: Selection[];
   proposition: string;
 }) {
   return `${headerPrefix} Facts
 ${factsToString(
-  zip(facts, selection).map(([fact, selected]): string =>
-    selected ? bold(fact) : fact,
+  selections.map(({ fact: proposition, selected }): string =>
+    selected ? bold(proposition) : proposition,
   ),
 )}
 ${headerPrefix} Proposition
@@ -514,14 +512,8 @@ export const Commands = [
               .setRequired(true),
           ),
       ),
-    facts: [],
+    selections: [],
     players: [],
-    selection: [],
-    threads: {
-      oneStep: null,
-      coherence: null,
-      multiStep: null,
-    },
     turn: 0,
     async execute(interaction: ChatInputCommandInteraction) {
       await interaction.deferReply();
@@ -540,8 +532,7 @@ export const Commands = [
           const proposition = truth
             ? positiveProposition
             : await negate(positiveProposition);
-          this.facts = [proposition];
-          this.selection = [true];
+          this.selections = [{ proposition, selected: true }];
           const channel = interaction.channel;
           if (channel == null) {
             throw Error("Cannot send message to null channel");
@@ -550,26 +541,23 @@ export const Commands = [
           await handleInteraction({
             interaction,
             message: getInferenceSetupText({
-              facts: this.facts,
+              selections: this.facts,
               proposition,
-              selection: this.selection,
             }),
           });
           break;
         case subcommands.update:
           const { factIndex, userInput } = getOptions(interaction);
           const whatYouDid = `You replaced fact ${factIndex} with "${userInput}"`;
-          const { facts, messages, selection, threads, turn } =
+          const { messages, selections, threads, turn } =
             await handleUpdateSubcommand({
               factIndex,
-              selection: this.selection,
-              facts: this.facts,
+              selections: this.selections,
               turn: this.turn,
               userInput,
             });
           const message = [whatYouDid].concat(messages).join("\n");
-          this.facts = facts;
-          this.selection = selection;
+          this.selections = selections;
           this.turn = turn;
 
           if (interaction.channel instanceof TextChannel) {
