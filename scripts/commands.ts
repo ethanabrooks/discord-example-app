@@ -52,6 +52,10 @@ function splitAtResponseLimit(text: string) {
     text.slice(BUILT_IN_RESPONSE_LIMIT),
   ];
 }
+function zip<A, B>(a: A[], b: B[]): [A, B][] {
+  let length = Math.min(a.length, b.length);
+  return a.slice(0, length).map((k, i) => [k, b[i]]);
+}
 
 async function handleInteraction({
   interaction,
@@ -137,11 +141,8 @@ function splitFacts(factsString: string) {
   });
 }
 
-function factsToString(facts: string[]) {
-  if (facts.length == 0) {
-    return "No facts.";
-  }
-  return facts.map((fact, index) => `${index + 1}. ${fact}`).join("\n");
+function factsToStrings(facts: string[]) {
+  return facts.map((fact, index) => `${index + 1}. ${fact}`);
 }
 
 function inferenceToBoolean(inference: string) {
@@ -168,7 +169,7 @@ function getUsernames(members: Collection<string, GuildMember>) {
     .map(({ user }) => user.username);
 }
 
-function randomChoice(array: any[]) {
+function randomChoice<Type>(array: Type[]) {
   return array[Math.floor(Math.random() * array.length)];
 }
 
@@ -308,6 +309,7 @@ ${selections}`);
         getInferenceSetupText({
           selections: updated,
           proposition,
+          showAll: false,
         }),
         getStatusText(status),
       ].concat(comment ? [comment] : []),
@@ -321,7 +323,7 @@ ${selections}`);
       throw new Error("Proposition is undefined");
     }
     const indices = indicesText(selections.map(({ selected }) => selected));
-    const facts = factsToString(selections.map(getFact));
+    const facts = factsToStrings(selections.map(getFact)).join("\n");
     const input = `Consider the following facts:
 ${facts}
 
@@ -329,7 +331,7 @@ ${
   selections.length == 1 ? "Does fact" : "Do facts"
 } ${indices} imply "${proposition}"? Let's think through this step by step.`;
 
-    const explanation = await complete({ input, model: gpt.four });
+    const explanation = await complete({ input, model: gpt.three });
     const inference = await complete({
       input: `${input}
 ${explanation}
@@ -420,16 +422,25 @@ function bold(text: string) {
 function getInferenceSetupText({
   selections,
   proposition,
+  showAll = true,
 }: {
   selections: Selection[];
   proposition: string;
+  showAll?: boolean;
 }) {
-  return `${headerPrefix} Facts
-${factsToString(
-  selections.map(({ fact: proposition, selected }): string =>
-    selected ? bold(proposition) : proposition,
-  ),
-)}
+  const allStrings = factsToStrings(
+    selections.map(({ fact: proposition, selected }): string =>
+      selected && showAll ? bold(proposition) : proposition,
+    ),
+  );
+  const factStrings = showAll
+    ? allStrings
+    : zip(allStrings, selections)
+        .filter(([, { selected }]) => selected)
+        .map(([fact]) => fact);
+  return `\
+${headerPrefix} Facts
+${factStrings.join("\n")}
 ${headerPrefix} Proposition
 _${proposition}_`;
 }
@@ -464,21 +475,32 @@ function getOptions(interaction: ChatInputCommandInteraction) {
   return { factIndex, userInput };
 }
 
+function chunkString(input: string, chunkSize: number): string[] {
+  return input.length == 0
+    ? []
+    : [
+        input.slice(0, chunkSize),
+        ...chunkString(input.slice(chunkSize), chunkSize),
+      ];
+}
+
 async function handleThreads(
   channel: TextChannel,
   reasons: Inferences<string[]>,
 ) {
   return await Object.entries(reasons)
-    .map(([key, value]: [string, string[]]) => ({
+    .map(([key, texts]) => ({
       name: threadNames[key],
-      explanation: value.join("\n"),
+      text: texts.join("\n"),
     }))
-    .forEach(async ({ name, explanation }) => {
+    .forEach(async ({ name, text }) => {
       const thread = await channel.threads.create({
         name,
         autoArchiveDuration: 60,
       });
-      return await thread.send(explanation);
+      chunkString(text, BUILT_IN_RESPONSE_LIMIT).forEach(async (chunk) => {
+        return await thread.send(text);
+      });
     });
 }
 
@@ -526,11 +548,9 @@ export const Commands = [
             this.players = getUsernames(members);
           }
           const truth = randomBoolean();
-          const positiveProposition = randomChoice(propositions);
-          const proposition = truth
-            ? positiveProposition
-            : await negate(positiveProposition);
-          this.selections = [{ proposition, selected: true }];
+          const positiveFact = randomChoice(propositions);
+          const proposition = truth ? positiveFact : await negate(positiveFact);
+          this.selections = [{ fact: proposition, selected: true }];
           const channel = interaction.channel;
           if (channel == null) {
             throw Error("Cannot send message to null channel");
@@ -539,8 +559,9 @@ export const Commands = [
           await handleInteraction({
             interaction,
             message: getInferenceSetupText({
-              selections: this.facts,
+              selections: this.selections,
               proposition,
+              showAll: false,
             }),
           });
           break;
