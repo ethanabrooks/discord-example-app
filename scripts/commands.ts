@@ -335,7 +335,7 @@ ${
   singular ? "Does fact" : "Do facts"
 } ${indices} imply "${proposition}"? Think through it step by step.`;
 
-    const explanation = await complete({ input, model: gpt.three });
+    const explanation = await complete({ input, model: gpt.four });
     const inference = await complete({
       input: `${input}
 ${explanation}
