@@ -28,17 +28,17 @@ const headerPrefix = "###";
 const tryAgainText = `${headerPrefix} Try again!`;
 const keepPlayingText = `${headerPrefix} Keep playing.`;
 const winText = "# You win!";
-type Threads = {
-  oneStep?: string[];
-  coherence?: string[];
-  multiStep?: string[];
+type Inferences<Type> = {
+  oneStep?: Type;
+  coherence?: Type;
+  multiStep?: Type;
 };
 type Selection = {
   fact: string;
   selected: boolean;
 };
 
-const threadNames = {
+const threadNames: Inferences<string> = {
   oneStep: "Reasoning for single-step inference",
   coherence: "Reasoning for coherence inference",
   multiStep: "Reasoning for multi-step inference",
@@ -264,7 +264,7 @@ async function handleUpdateSubcommand({
 }): Promise<{
   messages: string[];
   selections: Selection[];
-  threads: Threads;
+  reasons: Inferences<string[]>;
   turn: number;
 }> {
   if (validFactIndex(factIndex, selections.length)) {
@@ -272,7 +272,7 @@ async function handleUpdateSubcommand({
     return {
       selections,
       messages: [text, getStatusText("try again")],
-      threads: {},
+      reasons: {},
       turn,
     };
   }
@@ -294,11 +294,11 @@ ${selections}`);
 
   function turnResult({
     status,
-    threads,
+    reasons,
     comment = null,
   }: {
     status: Status;
-    threads: Threads;
+    reasons: Inferences<string[]>;
     comment?: string | null;
   }) {
     const updated = goToNextTurn(status) ? tentative : selections;
@@ -311,7 +311,7 @@ ${selections}`);
         }),
         getStatusText(status),
       ].concat(comment ? [comment] : []),
-      threads,
+      reasons,
       turn: turn + +goToNextTurn(status),
     };
   }
@@ -366,7 +366,7 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
   if (!oneStep.success) {
     return turnResult({
       status: "try again",
-      threads: { oneStep: oneStep.paragraphs },
+      reasons: { oneStep: oneStep.paragraphs },
       comment: "New facts must imply replaced fact.",
     });
   }
@@ -374,7 +374,7 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
   if (turn == 0) {
     return turnResult({
       status: "continue",
-      threads: { oneStep: oneStep.paragraphs },
+      reasons: { oneStep: oneStep.paragraphs },
     });
   }
   const [head, ...tail]: Selection[] = [
@@ -388,7 +388,7 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
   if (!coherence.success) {
     return turnResult({
       status: "try again",
-      threads: {
+      reasons: {
         oneStep: oneStep.paragraphs,
         coherence: coherence.paragraphs,
       },
@@ -402,7 +402,7 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
   const status = conditionedOnUpdated.success ? "continue" : "win";
   return turnResult({
     status,
-    threads: {
+    reasons: {
       oneStep: oneStep.paragraphs,
       coherence: coherence.paragraphs,
       multiStep: conditionedOnUpdated.paragraphs,
@@ -464,24 +464,22 @@ function getOptions(interaction: ChatInputCommandInteraction) {
   return { factIndex, userInput };
 }
 
-function threadsToObjects(threads: Threads) {
-  return Object.entries(threads).map(([key, value]: [string, string[]]) => ({
-    name: threadNames[key],
-    explanation: value.join("\n"),
-  }));
-}
-
 async function handleThreads(
   channel: TextChannel,
-  threads: { name; explanation }[],
+  reasons: Inferences<string[]>,
 ) {
-  return await threads.forEach(async ({ name, explanation }) => {
-    const thread = await channel.threads.create({
-      name,
-      autoArchiveDuration: 60,
+  return await Object.entries(reasons)
+    .map(([key, value]: [string, string[]]) => ({
+      name: threadNames[key],
+      explanation: value.join("\n"),
+    }))
+    .forEach(async ({ name, explanation }) => {
+      const thread = await channel.threads.create({
+        name,
+        autoArchiveDuration: 60,
+      });
+      return await thread.send(explanation);
     });
-    return await thread.send(explanation);
-  });
 }
 
 // Create commands
@@ -549,19 +547,23 @@ export const Commands = [
         case subcommands.update:
           const { factIndex, userInput } = getOptions(interaction);
           const whatYouDid = `You replaced fact ${factIndex} with "${userInput}"`;
-          const { messages, selections, threads, turn } =
-            await handleUpdateSubcommand({
-              factIndex,
-              selections: this.selections,
-              turn: this.turn,
-              userInput,
-            });
+          const {
+            messages,
+            selections,
+            reasons: threads,
+            turn,
+          } = await handleUpdateSubcommand({
+            factIndex,
+            selections: this.selections,
+            turn: this.turn,
+            userInput,
+          });
           const message = [whatYouDid].concat(messages).join("\n");
           this.selections = selections;
           this.turn = turn;
 
           if (interaction.channel instanceof TextChannel) {
-            await handleThreads(interaction.channel, threadsToObjects(threads));
+            await handleThreads(interaction.channel, threads);
           }
 
           return await handleInteraction({ interaction, message });
