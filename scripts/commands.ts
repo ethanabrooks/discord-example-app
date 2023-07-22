@@ -370,7 +370,7 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
     return turnResult({
       status: "try again",
       reasons: { oneStep: oneStep.paragraphs },
-      comment: "New facts must imply replaced fact.",
+      comment: "The new facts did not imply the replaced fact.",
     });
   }
 
@@ -378,6 +378,7 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
     return turnResult({
       status: "continue",
       reasons: { oneStep: oneStep.paragraphs },
+      comment: "The first fact was successfully updated.",
     });
   }
   const [head, ...tail]: Selection[] = [
@@ -395,7 +396,8 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
         oneStep: oneStep.paragraphs,
         coherence: coherence.paragraphs,
       },
-      comment: "Collectively, all facts must imply proposition.",
+      comment:
+        "Taken with all of the existing facts, the new facts do not imply the proposition.",
     });
   }
   const multiStep = await getInferenceResult({
@@ -411,7 +413,7 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
       multiStep: multiStep.paragraphs,
     },
     comment: multiStep.success
-      ? "Proposition still follows from updated facts."
+      ? "Your new fact(s) were added but the target Proposition still follows from updated facts."
       : "You broke the chain! GPT couldn't infer the proposition from the updated facts.",
   });
 }
@@ -437,9 +439,9 @@ function getInferenceSetupText({
       ),
   );
   return `\
-${headerPrefix} Facts
+${headerPrefix} ${showAll ? "" : "Current "}Facts
 ${factStrings.join("\n")}
-${headerPrefix} Proposition
+${headerPrefix} Target Proposition
 _${proposition}_`;
 }
 function getInferenceText({
@@ -565,7 +567,7 @@ export const Commands = [
           break;
         case subcommands.update:
           const { factIndex, userInput } = getOptions(interaction);
-          const whatYouDid = `You replaced fact ${factIndex} with "${userInput}"`;
+          const whatYouDid = `You tried to replace fact ${factIndex} with "${userInput}"`;
           const {
             messages,
             selections,
