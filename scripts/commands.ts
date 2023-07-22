@@ -287,11 +287,15 @@ async function handleUpdateSubcommand({
 ${selections}`);
   }
   const tentative = selections
-    .map(({ fact }, index) => ({
+    .map(({ fact, selected }, index) => ({
       fact,
-      selected: index + 1 != factIndex, // deselect fact at factIndex
+      selected: selected && index + 1 != factIndex, // deselect fact at factIndex
     }))
     .concat(userFacts.map(select)); // select all userFacts
+  console.log("Selections");
+  console.log(selections);
+  console.log("Tentative");
+  console.log(tentative);
 
   function turnResult({
     status,
@@ -324,12 +328,13 @@ ${selections}`);
     }
     const indices = indicesText(selections.map(({ selected }) => selected));
     const facts = factsToStrings(selections.map(getFact)).join("\n");
+    const singular = selections.length == 1;
     const input = `Consider the following facts:
 ${facts}
-
+${singular ? "" : `First, write out facts ${indices} in a list.`}
 ${
-  selections.length == 1 ? "Does fact" : "Do facts"
-} ${indices} imply "${proposition}"? Let's think through this step by step.`;
+  singular ? "Does fact" : "Do facts"
+} ${indices} imply "${proposition}"? Think through it step by step.`;
 
     const explanation = await complete({ input, model: gpt.three });
     const inference = await complete({
@@ -349,12 +354,9 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
     selections: Selection[];
     proposition: string;
   }) {
-    if (proposition == undefined) {
-      throw new Error("Proposition is undefined");
-    }
     const { explanation, inference } = await infer(selections, proposition);
     const paragraphs = [
-      getInferenceSetupText({ selections: tentative, proposition }),
+      getInferenceSetupText({ selections, proposition, showAll: false }),
       getInferenceText({ explanation, inference }),
     ];
     const success = inferenceToBoolean(inference);
@@ -363,7 +365,7 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
 
   const oneStep = await getInferenceResult({
     selections: [...selections.map(deselect), ...userFacts.map(select)],
-    proposition,
+    proposition: replace.fact,
   });
   if (!oneStep.success) {
     return turnResult({
@@ -397,19 +399,19 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
       comment: "Collectively, all facts must imply proposition.",
     });
   }
-  const conditionedOnUpdated = await getInferenceResult({
+  const multiStep = await getInferenceResult({
     selections: tentative,
-    proposition: replace.fact,
+    proposition,
   });
-  const status = conditionedOnUpdated.success ? "continue" : "win";
+  const status = multiStep.success ? "continue" : "win";
   return turnResult({
     status,
     reasons: {
       oneStep: oneStep.paragraphs,
       coherence: coherence.paragraphs,
-      multiStep: conditionedOnUpdated.paragraphs,
+      multiStep: multiStep.paragraphs,
     },
-    comment: conditionedOnUpdated.success
+    comment: multiStep.success
       ? "Proposition still follows from updated facts."
       : "You broke the chain! GPT couldn't infer the proposition from the updated facts.",
   });
@@ -499,7 +501,8 @@ async function handleThreads(
         autoArchiveDuration: 60,
       });
       chunkString(text, BUILT_IN_RESPONSE_LIMIT).forEach(async (chunk) => {
-        return await thread.send(text);
+        console.log("Length of chunk: " + chunk.length);
+        return await thread.send(chunk);
       });
     });
 }
