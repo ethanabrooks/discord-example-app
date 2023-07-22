@@ -363,7 +363,7 @@ export async function createChatCompletionWithBackoff({
     ? text
     : await openai
         .createChatCompletion({
-          model: "gpt-3.5-turbo",
+          model,
           messages: inputMessages,
           stop: stopWord,
           temperature: 1,

@@ -69,8 +69,7 @@ async function handleInteraction({
   const reply = { content, components, files };
   const channel = interaction.channel;
   if (channel == null) {
-    console.log("Cannot send message to null channel");
-    return;
+    throw Error("Cannot send message to null channel");
   }
 
   // Update reply
@@ -98,18 +97,15 @@ async function handleInteraction({
               });
               break;
             default:
-              console.log("Cannot use button " + buttonInteraction.customId);
+              throw Error("Cannot use button " + buttonInteraction.customId);
           }
         })
         .catch(async (e) => {
           catchError(e);
-          console.log("firstReply:", firstReply);
-          console.log("Trying again with firstReply", !firstReply);
           return await (!firstReply
             ? interaction.followUp(reply)
             : channel.send(reply).catch((e) => {
                 catchError(e);
-                console.log("Giving up");
                 return;
               }));
         }),
@@ -137,42 +133,8 @@ function factsToString(facts: string[]) {
   return facts.map((fact, index) => `${index + 1}. ${fact}`).join("\n");
 }
 
-async function infer(facts: string[], proposition: string) {
-  const input = `Given the following facts:
-${factsToString(facts)}}
-
-is the proposition "${proposition}" more likely to be true than false? Let's think through this step by step.`;
-
-  const explanation = await complete({ input, model: gpt.four });
-  const inference = await complete({
-    input: `${input}
-${explanation}
-
-In conclusion, the proposition "${proposition}" is probably [true|false|indeterminate]`,
-    model: gpt.three,
-  });
-  return { explanation, inference };
-}
-
-async function getInferenceResult({
-  facts,
-  proposition,
-}: {
-  facts: string[];
-  proposition: string;
-}) {
-  const { explanation, inference } = await infer(facts, proposition);
-  const texts = [
-    getInferenceSetupText({ facts, proposition }),
-    getInferenceText({ explanation, inference }),
-  ];
-  const success = inferenceToBoolean(inference);
-  return { texts, success };
-}
-
 function inferenceToBoolean(inference: string) {
   inference = inference.toLowerCase();
-  console.log("inference:", inference);
   const containsTrue = inference.includes("true");
   const containsFalse = inference.includes("false");
   if (
@@ -220,7 +182,7 @@ async function userInputToFacts(text: string) {
 }
 
 function validFactIndex(factIndex: number, length: number) {
-  return factIndex < 0 || length <= factIndex;
+  return factIndex <= 0 || length < factIndex;
 }
 
 async function promptNewFactIndex(length: number, userInput: string) {
@@ -230,56 +192,88 @@ async function promptNewFactIndex(length: number, userInput: string) {
 (You wrote: "${userInput}")`;
 }
 
-function insert<Type>({
-  array,
-  index,
-  elements,
-  replace,
-}: {
-  array: Type[];
-  index: number;
-  elements: Type[];
-  replace: boolean;
-}) {
-  return array
-    .slice(0, index)
-    .concat(elements)
-    .concat(array.slice(replace ? index + 1 : index));
+function getStatusText(status: Status) {
+  switch (status) {
+    case "try again":
+      return tryAgainText;
+    case "continue":
+      return keepPlayingText;
+    case "win":
+      return winText;
+    default:
+      throw new Error(`Invalid status: ${status}`);
+  }
+}
+
+function goToNextTurn(status: Status) {
+  switch (status) {
+    case "try again":
+      return false;
+    case "continue":
+    case "win":
+      return true;
+    default:
+      throw new Error(`Invalid status: ${status}`);
+  }
+}
+
+function fill<Type>(array: any[], value: Type): Type[] {
+  return array.map(() => value);
+}
+
+function zip<A, B>(a: A[], b: B[]): [A, B][] {
+  return a.map((k, i) => [k, b[i]]);
+}
+
+function selectionText(selection: boolean[]) {
+  const indices = selection.flatMap((selected, i) => (selected ? [i + 1] : []));
+  const last = indices.pop();
+  if (indices.length == 0) {
+    return `Does fact ${last}`;
+  }
+  return "Do facts " + indices.join(", ") + ` and ${last}`;
 }
 
 async function handleUpdateSubcommand({
   factIndex,
   facts,
-  proposition,
+  selection,
   turn,
   userInput,
 }: {
   factIndex: number;
   facts: string[];
-  proposition: string;
+  selection: boolean[];
   turn: number;
   userInput: string;
-}) {
+}): Promise<{
+  texts: string[];
+  facts: string[];
+  selection: boolean[];
+  turn: number;
+}> {
   if (validFactIndex(factIndex, facts.length)) {
     const text = await promptNewFactIndex(facts.length, userInput);
-    return { texts: [text], facts, turn };
+    return {
+      texts: [text, getStatusText("try again")],
+      facts,
+      selection,
+      turn,
+    };
   }
 
+  const [proposition] = facts;
   const userFacts = await userInputToFacts(userInput);
-  const fact = facts[factIndex];
+  const fact = facts[factIndex - 1];
+  if (fact == undefined) {
+    throw new Error(`Fact at index ${factIndex} is undefined. Facts:
+${facts}`);
+  }
+  const updatedFacts = facts.concat(userFacts);
+  const updatedSelection = selection
+    .map((_, i) => i > 0 && i + 1 != factIndex)
+    .concat(fill(userFacts, true));
 
-  const updatedFacts = insert({
-    array: facts,
-    index: factIndex,
-    elements: userFacts,
-    replace: true,
-  });
-  const allFacts = insert({
-    array: facts,
-    index: factIndex,
-    elements: userFacts,
-    replace: false,
-  });
   function turnResult({
     status,
     texts,
@@ -289,33 +283,76 @@ async function handleUpdateSubcommand({
     texts: string[];
     comment?: string | null;
   }) {
-    let statusText: string;
-    let resultTurn: number = turn + 1;
-    let resultFacts: string[] = updatedFacts;
-    switch (status) {
-      case "try again":
-        statusText = tryAgainText;
-        resultFacts = facts;
-        resultTurn = turn;
-        break;
-      case "continue":
-        statusText = keepPlayingText;
-        break;
-      case "win":
-        statusText = winText;
-        break;
-      default:
-        throw new Error(`Invalid status: ${status}`);
-    }
-
+    const resultFacts = goToNextTurn(status) ? updatedFacts : facts;
+    const resultSelection = goToNextTurn(status) ? updatedSelection : selection;
     return {
-      texts: [...texts, statusText].concat(comment ? [comment] : []),
+      texts: [
+        ...texts,
+        getInferenceSetupText({
+          facts: resultFacts,
+          selection: resultSelection,
+          proposition,
+        }),
+        getStatusText(status),
+      ].concat(comment ? [comment] : []),
       facts: resultFacts,
-      turn: resultTurn,
+      selection: resultSelection,
+      turn: turn + +goToNextTurn(status),
     };
   }
 
-  const oneStep = await getInferenceResult({ facts: userFacts, proposition });
+  async function infer(selection: boolean[], proposition: string) {
+    if (proposition == undefined) {
+      throw new Error("Proposition is undefined");
+    }
+    const input = `Consider the following facts:
+${factsToString(updatedFacts)}
+
+${selectionText(
+  selection,
+)} imply "${proposition}"? Let's think through this step by step.`;
+
+    const explanation = await complete({ input, model: gpt.four });
+    const inference = await complete({
+      input: `${input}
+${explanation}
+
+In conclusion, the proposition "${proposition}" is probably [true|false|indeterminate]`,
+      model: gpt.three,
+    });
+    return { explanation, inference };
+  }
+
+  async function getInferenceResult({
+    selection,
+    proposition,
+  }: {
+    selection: boolean[];
+    proposition: string;
+  }) {
+    if (proposition == undefined) {
+      throw new Error("Proposition is undefined");
+    }
+    if (selection.length != updatedFacts.length) {
+      throw new Error(
+        `Expected selection length ${selection.length} to equal facts length ${facts.length}`,
+      );
+    }
+    console.log("selection", selection);
+    console.log("updatedFacts", updatedFacts);
+    const { explanation, inference } = await infer(selection, proposition);
+    const texts = [
+      getInferenceSetupText({ facts: updatedFacts, proposition, selection }),
+      getInferenceText({ explanation, inference }),
+    ];
+    const success = inferenceToBoolean(inference);
+    return { texts, success };
+  }
+
+  const oneStep = await getInferenceResult({
+    selection: fill(facts, false).concat(fill(userFacts, true)),
+    proposition: fact,
+  });
   if (!oneStep.success) {
     return turnResult({
       status: "try again",
@@ -330,9 +367,10 @@ async function handleUpdateSubcommand({
       texts: oneStep.texts,
     });
   }
+  const [, selectionTail] = fill(facts.concat(userFacts), true);
   const conditionedOnAll = await getInferenceResult({
-    facts: allFacts,
-    proposition: fact,
+    selection: [false].concat(selectionTail),
+    proposition,
   });
   if (!conditionedOnAll.success) {
     return turnResult({
@@ -342,7 +380,7 @@ async function handleUpdateSubcommand({
     });
   }
   const conditionedOnUpdated = await getInferenceResult({
-    facts: updatedFacts,
+    selection: updatedSelection,
     proposition: fact,
   });
   const status = conditionedOnUpdated.success ? "continue" : "win";
@@ -354,18 +392,33 @@ async function handleUpdateSubcommand({
       ...conditionedOnUpdated.texts,
     ],
     comment: conditionedOnUpdated.success
-      ? "You broke the chain! GPT couldn't infer the proposition from the updated facts."
-      : "Proposition still follows from updated facts.",
+      ? "Proposition still follows from updated facts."
+      : "You broke the chain! GPT couldn't infer the proposition from the updated facts.",
   });
 }
 
-function getInferenceSetupText({ facts, proposition }) {
+function bold(text: string) {
+  return `**${text}**`;
+}
+
+function getInferenceSetupText({
+  facts,
+  selection,
+  proposition,
+}: {
+  facts: string[];
+  selection: boolean[];
+  proposition: string;
+}) {
   return `${headerPrefix} Facts
-${factsToString(facts)}
+${factsToString(
+  zip(facts, selection).map(([fact, selected]): string =>
+    selected ? bold(fact) : fact,
+  ),
+)}
 ${headerPrefix} Proposition
 _${proposition}_`;
 }
-
 function getInferenceText({
   explanation,
   inference,
@@ -374,14 +427,26 @@ function getInferenceText({
   inference: string;
 }) {
   return `\
-inference: **${inference}**
+Inference: ${bold(inference)}
 ${headerPrefix} Explanation
 ${explanation}`;
 }
 
 function getOptions(interaction: ChatInputCommandInteraction) {
-  const factIndex = interaction.options.getNumber("fact") - 1;
+  const factIndex = interaction.options.getNumber("fact");
+  if (factIndex == undefined) {
+    throw new Error("Fact index is undefined");
+  }
+  if (factIndex == null) {
+    throw new Error("Fact index is null");
+  }
   const userInput = interaction.options.getString("new-facts");
+  if (userInput == undefined) {
+    throw new Error("User input is undefined");
+  }
+  if (userInput == null) {
+    throw new Error("User input is null");
+  }
   return { factIndex, userInput };
 }
 
@@ -413,9 +478,9 @@ export const Commands = [
               .setRequired(true),
           ),
       ),
-    proposition: null,
     facts: [],
     players: [],
+    selection: [],
     turn: 0,
     async execute(interaction: ChatInputCommandInteraction) {
       await interaction.deferReply();
@@ -425,42 +490,40 @@ export const Commands = [
           const members: ThreadMemberManager | Collection<string, GuildMember> =
             interaction.channel.members;
           if (members instanceof ThreadMemberManager) {
-            console.log("Thread Member Manager");
+            throw Error("Thread Member Manager");
           } else {
             this.players = getUsernames(members);
           }
-          this.proposition = randomChoice(propositions);
           const truth = randomBoolean();
-          console.log(truth);
-          console.log("this.proposition", this.proposition);
-          if (!truth) {
-            this.proposition = await negate(this.proposition);
-          }
-          this.facts = [this.proposition];
-          console.log("facts", this.facts);
+          const positiveProposition = randomChoice(propositions);
+          const proposition = truth
+            ? positiveProposition
+            : await negate(positiveProposition);
+          this.facts = [proposition];
+          this.selection = [true];
           await handleInteraction({
             interaction,
             text: getInferenceSetupText({
               facts: this.facts,
-              proposition: this.proposition,
+              proposition,
+              selection: this.selection,
             }),
           });
           break;
         case subcommands.update:
-          const proposition = this.proposition;
           const { factIndex, userInput } = getOptions(interaction);
-          const whatYouDid = `You replaced fact ${
-            factIndex + 1
-          } with "${userInput}"`;
-          const { texts, facts, turn } = await handleUpdateSubcommand({
-            factIndex,
-            facts: this.facts,
-            proposition,
-            turn: this.turn,
-            userInput,
-          });
+          const whatYouDid = `You replaced fact ${factIndex} with "${userInput}"`;
+          const { facts, selection, texts, turn } =
+            await handleUpdateSubcommand({
+              factIndex,
+              selection: this.selection,
+              facts: this.facts,
+              turn: this.turn,
+              userInput,
+            });
           const text = [whatYouDid].concat(texts).join("\n");
           this.facts = facts;
+          this.selection = selection;
           this.turn = turn;
 
           return await handleInteraction({ interaction, text });
@@ -471,19 +534,3 @@ export const Commands = [
     },
   },
 ];
-async function validateFacts(
-  facts: string[],
-): Promise<{ valid: boolean; explanation: string }> {
-  const query = `${factsToString(facts)}
-Issues:`;
-  const completion = await complete({
-    input: `${pronouns}
-    
-${query}`,
-  });
-  const valid = completion == "none";
-  const explanation = `${headerPrefix} Invalid use of pronouns
-${query} ${completion}`;
-
-  return { valid, explanation };
-}
