@@ -269,7 +269,10 @@ async function handleUpdateSubcommand({
   turn: number;
 }> {
   if (validFactIndex(factIndex, selections.length)) {
-    const text = await promptNewFactIndex(selections.length, userInput);
+    const text = await promptNewFactIndex(
+      selections.filter(({ selected }) => selected).length,
+      userInput,
+    );
     return {
       selections,
       messages: [text, getStatusText("try again")],
@@ -281,7 +284,7 @@ async function handleUpdateSubcommand({
   const facts = selections.map(getFact);
   const [proposition] = facts;
   const userFacts = await userInputToFacts(userInput);
-  const replace = selections[factIndex - 1];
+  const replace = selections.filter(({ selected }) => selected)[factIndex - 1];
   if (replace == undefined) {
     throw new Error(`Fact at index ${factIndex} is undefined. Facts:
 ${selections}`);
@@ -292,10 +295,6 @@ ${selections}`);
       selected: selected && index + 1 != factIndex, // deselect fact at factIndex
     }))
     .concat(userFacts.map(select)); // select all userFacts
-  console.log("Selections");
-  console.log(selections);
-  console.log("Tentative");
-  console.log(tentative);
 
   function turnResult({
     status,
@@ -430,16 +429,13 @@ function getInferenceSetupText({
   proposition: string;
   showAll?: boolean;
 }) {
-  const allStrings = factsToStrings(
-    selections.map(({ fact: proposition, selected }): string =>
-      selected && showAll ? bold(proposition) : proposition,
-    ),
+  const factStrings = factsToStrings(
+    selections
+      .filter(({ selected }) => selected)
+      .map(({ fact: proposition, selected }): string =>
+        selected && showAll ? bold(proposition) : proposition,
+      ),
   );
-  const factStrings = showAll
-    ? allStrings
-    : zip(allStrings, selections)
-        .filter(([, { selected }]) => selected)
-        .map(([fact]) => fact);
   return `\
 ${headerPrefix} Facts
 ${factStrings.join("\n")}
@@ -501,7 +497,6 @@ async function handleThreads(
         autoArchiveDuration: 60,
       });
       chunkString(text, BUILT_IN_RESPONSE_LIMIT).forEach(async (chunk) => {
-        console.log("Length of chunk: " + chunk.length);
         return await thread.send(chunk);
       });
     });
