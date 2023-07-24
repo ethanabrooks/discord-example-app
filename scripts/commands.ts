@@ -361,6 +361,9 @@ Ensure that the remaining facts still make sense.`,
     while ((match = markdownListRegex.exec(markdownString)) !== null) {
       selectedFacts.push(match[1]);
     }
+    if (selectedFacts.length == 0) {
+      selectedFacts.push(markdownString);
+    }
     const input = `Consider the following fact${
       selectedFacts.length == 1 ? "" : "s"
     }:
