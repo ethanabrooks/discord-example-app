@@ -290,11 +290,22 @@ async function handleUpdateSubcommand({
 ${selections}`);
   }
   const tentative = selections
-    .map(({ fact, selected }, index) => ({
-      fact,
-      selected: selected && index + 1 != factIndex, // deselect fact at factIndex
-    }))
-    .concat(userFacts.map(select)); // select all userFacts
+    .reduce(
+      ({ tentative, count }, { selected, fact }) => {
+        count = count + +selected;
+        if (count == factIndex) {
+          selected = false; // deselect the fact corresponding to factIndex
+        }
+        const selection = { fact, selected };
+        return { tentative: [...tentative, selection], count };
+      },
+      { tentative: [], count: 0 },
+    )
+    .tentative.concat(userFacts.map(select)); // select all userFacts
+
+  if (tentative.includes(replace)) {
+    throw Error(`Tentative facts still include replaced fact.`);
+  }
 
   function turnResult({
     status,
