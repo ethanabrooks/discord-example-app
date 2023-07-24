@@ -366,7 +366,7 @@ export async function createChatCompletionWithBackoff({
           model,
           messages: inputMessages,
           stop: stopWord,
-          temperature: 1,
+          temperature: 0,
           max_tokens: 1000,
           top_p: 0.5,
         })
