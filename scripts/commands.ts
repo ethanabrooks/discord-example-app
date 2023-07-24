@@ -369,7 +369,7 @@ ${
   selectedFacts.length == 1 ? "Do these facts" : "Does this fact"
 } imply _${proposition}_? Think through it step by step.`;
 
-    const explanation = await complete({ input, model: gpt.three });
+    const explanation = await complete({ input, model: gpt.four });
     const inference = await complete({
       input: `${input}
 ${explanation}
