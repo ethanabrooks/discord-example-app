@@ -332,7 +332,9 @@ ${selections}`);
     const verb = goToNextTurn(status)
       ? "You replaced"
       : "You failed to replace";
-    const whatYouDid = `${verb} fact ${factIndex} with "${userInput}"`;
+    const whatYouDid = `\
+${verb} fact ${factIndex}: _${replace.fact}_ 
+with "${userInput}"`;
     return {
       selections: goToNextTurn(status) ? tentative : selections,
       messages: [
