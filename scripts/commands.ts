@@ -25,6 +25,7 @@ import propositions from "./propositions.js";
 
 const BUILT_IN_RESPONSE_LIMIT = 2000;
 const COHERENCE_VALIDATION = false;
+const REMOVE_FACTS_WITH_GPT = false;
 const headerPrefix = "###";
 const tryAgainText = `${headerPrefix} Try again!`;
 const keepPlayingText = `${headerPrefix} Keep playing.`;
@@ -354,25 +355,31 @@ ${selections}`);
     if (proposition == undefined) {
       throw new Error("Proposition is undefined");
     }
-    const indices = indicesText(selections.map(({ selected }) => !selected));
-    const facts: string = factsToStrings(selections.map(getFact)).join("\n");
-    const markdownString = await complete({
-      input: `Remove fact${
-        indices.length == 1 ? "" : "s"
-      } ${indices} from the following list:
+    let selectedFacts = [];
+    if (REMOVE_FACTS_WITH_GPT) {
+      const indices = indicesText(selections.map(({ selected }) => !selected));
+      const facts: string = factsToStrings(selections.map(getFact)).join("\n");
+      const markdownString = await complete({
+        input: `Remove fact${
+          indices.length == 1 ? "" : "s"
+        } ${indices} from the following list:
 ${facts}
 Ensure that the remaining facts still make sense.`,
-      model: gpt.three,
-    });
-    const markdownListRegex = /^(\d+\.\s.+)$/gm;
-    const selectedFacts = [];
-    let match;
+        model: gpt.three,
+      });
+      const markdownListRegex = /^(\d+\.\s.+)$/gm;
+      let match;
 
-    while ((match = markdownListRegex.exec(markdownString)) !== null) {
-      selectedFacts.push(match[1]);
-    }
-    if (selectedFacts.length == 0) {
-      selectedFacts.push(markdownString);
+      while ((match = markdownListRegex.exec(markdownString)) !== null) {
+        selectedFacts.push(match[1]);
+      }
+      if (selectedFacts.length == 0) {
+        selectedFacts.push(markdownString);
+      }
+    } else {
+      selectedFacts = factsToStrings(
+        selections.filter(({ selected }) => selected).map(({ fact }) => fact),
+      );
     }
     const input = `Consider the following fact${
       selectedFacts.length == 1 ? "" : "s"
