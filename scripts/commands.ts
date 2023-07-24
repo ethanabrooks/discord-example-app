@@ -39,9 +39,9 @@ type Selection = {
 };
 
 const threadNames: Inferences<string> = {
-  oneStep: "Reasoning for single-step inference",
+  oneStep: "Reasoning for replacement inference",
   coherence: "Reasoning for coherence inference",
-  multiStep: "Reasoning for multi-step inference",
+  multiStep: "Reasoning for chain inference",
 };
 
 type Status = "win" | "try again" | "continue";
@@ -282,8 +282,8 @@ async function handleUpdateSubcommand({
   const userFacts = await userInputToFacts(userInput);
   const plural = userFacts.length > 1;
   const commentsIntro = [
-    `${headerPrefix} Proposed fact${plural ? "s" : ""}`,
-    ...userFacts,
+    `${headerPrefix} Proposed new fact${plural ? "s" : ""}`,
+    ...userFacts.map((fact) => `_${fact}_`),
     `${headerPrefix} Result`,
   ];
   const replace = selections.filter(({ selected }) => selected)[factIndex - 1];
@@ -292,7 +292,7 @@ async function handleUpdateSubcommand({
 ${selections}`);
   }
 
-  const tentative = selections
+  const oldAndNew = selections
     .reduce(
       ({ tentative, count }, { selected, fact }) => {
         count = count + +selected;
@@ -300,11 +300,19 @@ ${selections}`);
           selected = false; // deselect the fact corresponding to factIndex
         }
         const selection = { fact, selected };
-        return { tentative: [...tentative, selection], count };
+        return { tentative: [...tentative, { old: true, selection }], count };
       },
       { tentative: [], count: 0 },
     )
-    .tentative.concat(userFacts.map(select)); // select all userFacts
+    .tentative.concat(
+      userFacts.map(select).map((selection) => ({ old: false, selection })),
+    ); // select all userFacts
+  const tentative = oldAndNew.map(({ selection }) => selection);
+  const tentativeWithItalics = oldAndNew.map(
+    ({ old, selection: { fact, selected } }) => {
+      return { fact: old ? fact : `_${fact}_`, selected };
+    },
+  );
 
   if (tentative.includes(replace)) {
     throw Error(`Tentative facts still include replaced fact.`);
@@ -319,19 +327,20 @@ ${selections}`);
     reasons: Inferences<string[]>;
     comments: string[];
   }) {
-    const verb = goToNextTurn(status) ? "You replaced" : "You tried to replace";
+    const verb = goToNextTurn(status)
+      ? "You replaced"
+      : "You failed to replace";
     const whatYouDid = `${verb} fact ${factIndex} with "${userInput}"`;
-    const updated = goToNextTurn(status) ? tentative : selections;
     return {
-      selections: updated,
+      selections: goToNextTurn(status) ? tentative : selections,
       messages: [
         whatYouDid,
         ...comments,
         getInferenceSetupText({
-          selections: updated,
+          selections: goToNextTurn(status) ? tentativeWithItalics : selections,
           proposition,
           showAll: false,
-          factsDescriptor: goToNextTurn(status) ? "Updated" : null,
+          factStatus: goToNextTurn(status) ? "updated" : "unchanged",
         }),
         getStatusText(status),
       ],
@@ -392,7 +401,12 @@ In conclusion, the proposition _${proposition}_ is probably [true|false|indeterm
   }) {
     const { explanation, inference } = await infer(selections, proposition);
     const paragraphs = [
-      getInferenceSetupText({ selections, proposition, showAll: false }),
+      getInferenceSetupText({
+        factStatus: "initial",
+        proposition,
+        selections,
+        showAll: false,
+      }),
       getInferenceText({ explanation, inference }),
     ];
     const success = inferenceToBoolean(inference);
@@ -478,16 +492,29 @@ function bold(text: string) {
   return `**${text}**`;
 }
 
+type FactStatus = "initial" | "updated" | "unchanged";
+
+function getFactWord(status: FactStatus) {
+  switch (status) {
+    case "initial":
+      return "";
+    case "updated":
+      return " now";
+    case "unchanged":
+      return " still";
+  }
+}
+
 function getInferenceSetupText({
   selections,
   proposition,
+  factStatus,
   showAll = true,
-  factsDescriptor = null,
 }: {
+  factStatus: FactStatus;
   selections: Selection[];
   proposition: string;
   showAll?: boolean;
-  factsDescriptor?: null | string;
 }) {
   const factStrings = factsToStrings(
     selections
@@ -497,7 +524,9 @@ function getInferenceSetupText({
       ),
   );
   return `\
-${headerPrefix} ${factsDescriptor ? `${factsDescriptor} ` : ""}Facts
+${headerPrefix} The fact${factStrings.length == 1 ? "" : "s"} are${getFactWord(
+    factStatus,
+  )}:
 ${factStrings.join("\n")}
 ${headerPrefix} Target Proposition
 _${proposition}_`;
@@ -617,8 +646,9 @@ export const Commands = [
           await handleInteraction({
             interaction,
             message: getInferenceSetupText({
-              selections: this.selections,
+              factStatus: "initial",
               proposition,
+              selections: this.selections,
               showAll: false,
             }),
           });
