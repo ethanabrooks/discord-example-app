@@ -613,7 +613,13 @@ export const Commands = [
       .addSubcommand((subcommand) =>
         subcommand
           .setName(subcommands.start)
-          .setDescription("Start a new game."),
+          .setDescription("Start a new game.")
+          .addStringOption((option) =>
+            option
+              .setName("proposition")
+              .setDescription("The target proposition that GPT tries to prove.")
+              .setRequired(false),
+          ),
       )
       .addSubcommand((subcommand) =>
         subcommand
@@ -648,8 +654,11 @@ export const Commands = [
             this.players = getUsernames(members);
           }
           const truth = randomBoolean();
-          const positiveFact = `${randomChoice(propositions)}.`;
-          const proposition = truth ? positiveFact : await negate(positiveFact);
+          let proposition = interaction.options.getString("proposition");
+          if (proposition == undefined) {
+            const positiveFact = `${randomChoice(propositions)}.`;
+            proposition = truth ? positiveFact : await negate(positiveFact);
+          }
           this.selections = [{ fact: proposition, selected: true }];
           const channel = interaction.channel;
           if (channel == null) {
