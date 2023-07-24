@@ -52,10 +52,6 @@ function splitAtResponseLimit(text: string) {
     text.slice(BUILT_IN_RESPONSE_LIMIT),
   ];
 }
-function zip<A, B>(a: A[], b: B[]): [A, B][] {
-  let length = Math.min(a.length, b.length);
-  return a.slice(0, length).map((k, i) => [k, b[i]]);
-}
 
 async function handleInteraction({
   interaction,
@@ -284,11 +280,18 @@ async function handleUpdateSubcommand({
   const facts = selections.map(getFact);
   const [proposition] = facts;
   const userFacts = await userInputToFacts(userInput);
+  const plural = userFacts.length > 1;
+  const commentsIntro = [
+    `${headerPrefix} Proposed fact${plural ? "s" : ""}`,
+    ...userFacts,
+    `${headerPrefix} Result`,
+  ];
   const replace = selections.filter(({ selected }) => selected)[factIndex - 1];
   if (replace == undefined) {
     throw new Error(`Fact at index ${factIndex} is undefined. Facts:
 ${selections}`);
   }
+
   const tentative = selections
     .reduce(
       ({ tentative, count }, { selected, fact }) => {
@@ -310,23 +313,28 @@ ${selections}`);
   function turnResult({
     status,
     reasons,
-    comment = null,
+    comments,
   }: {
     status: Status;
     reasons: Inferences<string[]>;
-    comment?: string | null;
+    comments: string[];
   }) {
+    const verb = goToNextTurn(status) ? "You replaced" : "You tried to replace";
+    const whatYouDid = `${verb} fact ${factIndex} with "${userInput}"`;
     const updated = goToNextTurn(status) ? tentative : selections;
     return {
       selections: updated,
       messages: [
+        whatYouDid,
+        ...comments,
         getInferenceSetupText({
           selections: updated,
           proposition,
           showAll: false,
+          factsDescriptor: goToNextTurn(status) ? "Updated" : null,
         }),
         getStatusText(status),
-      ].concat(comment ? [comment] : []),
+      ],
       reasons,
       turn: turn + +goToNextTurn(status),
     };
@@ -337,21 +345,21 @@ ${selections}`);
       throw new Error("Proposition is undefined");
     }
     const indices = indicesText(selections.map(({ selected }) => selected));
-    const facts = factsToStrings(selections.map(getFact)).join("\n");
+    const facts: string = factsToStrings(selections.map(getFact)).join("\n");
     const singular = selections.length == 1;
     const input = `Consider the following facts:
 ${facts}
 ${singular ? "" : `First, write out facts ${indices} in a list.`}
 ${
   singular ? "Does fact" : "Do facts"
-} ${indices} imply "${proposition}"? Think through it step by step.`;
+} ${indices} imply _${proposition}_? Think through it step by step.`;
 
-    const explanation = await complete({ input, model: gpt.four });
+    const explanation = await complete({ input, model: gpt.three });
     const inference = await complete({
       input: `${input}
 ${explanation}
 
-In conclusion, the proposition "${proposition}" is probably [true|false|indeterminate]`,
+In conclusion, the proposition _${proposition}_ is probably [true|false|indeterminate]`,
       model: gpt.three,
     });
     return { explanation, inference };
@@ -381,7 +389,10 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
     return turnResult({
       status: "try again",
       reasons: { oneStep: oneStep.paragraphs },
-      comment: "The new facts did not imply the replaced fact.",
+      comments: [
+        ...commentsIntro,
+        "The new facts did not imply the replaced fact.",
+      ],
     });
   }
 
@@ -389,9 +400,16 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
     return turnResult({
       status: "continue",
       reasons: { oneStep: oneStep.paragraphs },
-      comment: "The first fact was successfully updated.",
+      comments: [
+        ...commentsIntro,
+        `The new fact${plural ? "s imply" : " implies"} _${proposition}_`,
+        "The first fact was successfully updated.",
+      ],
     });
   }
+  const oneStepComment = `The new fact${plural ? "s imply" : " implies"} _${
+    replace.fact
+  }_`;
   const [head, ...tail]: Selection[] = [
     ...selections.map(select),
     ...userFacts.map(select),
@@ -407,8 +425,10 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
         oneStep: oneStep.paragraphs,
         coherence: coherence.paragraphs,
       },
-      comment:
-        "Taken with all of the existing facts, the new facts do not imply the proposition.",
+      comments: [
+        ...commentsIntro,
+        `${oneStepComment}. However, taken with all of the existing facts, they do not imply the proposition. The proposed facts were rejected.`,
+      ],
     });
   }
   const multiStep = await getInferenceResult({
@@ -423,9 +443,16 @@ In conclusion, the proposition "${proposition}" is probably [true|false|indeterm
       coherence: coherence.paragraphs,
       multiStep: multiStep.paragraphs,
     },
-    comment: multiStep.success
-      ? "Your new fact(s) were added but the target Proposition still follows from updated facts."
-      : "You broke the chain! GPT couldn't infer the proposition from the updated facts.",
+    comments: [
+      ...commentsIntro,
+      oneStepComment,
+      `Taken with all of the existing facts, they also imply the target proposition: _${proposition}_`,
+      multiStep.success
+        ? `Your new fact${
+            plural ? "s were" : "was"
+          } added but the target proposition still follows from updated facts.`
+        : "You broke the chain! GPT couldn't infer the target proposition from the updated facts.",
+    ],
   });
 }
 
@@ -437,10 +464,12 @@ function getInferenceSetupText({
   selections,
   proposition,
   showAll = true,
+  factsDescriptor = null,
 }: {
   selections: Selection[];
   proposition: string;
   showAll?: boolean;
+  factsDescriptor?: null | string;
 }) {
   const factStrings = factsToStrings(
     selections
@@ -450,7 +479,7 @@ function getInferenceSetupText({
       ),
   );
   return `\
-${headerPrefix} ${showAll ? "" : "Current "}Facts
+${headerPrefix} ${factsDescriptor ? `${factsDescriptor} ` : ""}Facts
 ${factStrings.join("\n")}
 ${headerPrefix} Target Proposition
 _${proposition}_`;
@@ -559,7 +588,7 @@ export const Commands = [
             this.players = getUsernames(members);
           }
           const truth = randomBoolean();
-          const positiveFact = randomChoice(propositions);
+          const positiveFact = `${randomChoice(propositions)}.`;
           const proposition = truth ? positiveFact : await negate(positiveFact);
           this.selections = [{ fact: proposition, selected: true }];
           const channel = interaction.channel;
@@ -578,7 +607,6 @@ export const Commands = [
           break;
         case subcommands.update:
           const { factIndex, userInput } = getOptions(interaction);
-          const whatYouDid = `You tried to replace fact ${factIndex} with "${userInput}"`;
           const {
             messages,
             selections,
@@ -590,7 +618,7 @@ export const Commands = [
             turn: this.turn,
             userInput,
           });
-          const message = [whatYouDid].concat(messages).join("\n");
+          const message = messages.join("\n");
           this.selections = selections;
           this.turn = turn;
 
