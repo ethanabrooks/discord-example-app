@@ -344,15 +344,30 @@ ${selections}`);
     if (proposition == undefined) {
       throw new Error("Proposition is undefined");
     }
-    const indices = indicesText(selections.map(({ selected }) => selected));
+    const indices = indicesText(selections.map(({ selected }) => !selected));
     const facts: string = factsToStrings(selections.map(getFact)).join("\n");
-    const singular = selections.length == 1;
-    const input = `Consider the following facts:
+    const markdownString = await complete({
+      input: `Remove fact${
+        indices.length == 1 ? "" : "s"
+      } ${indices} from the following list:
 ${facts}
-${singular ? "" : `First, write out facts ${indices} in a list.`}
+Ensure that the remaining facts still make sense.`,
+      model: gpt.three,
+    });
+    const markdownListRegex = /^(\d+\.\s.+)$/gm;
+    const selectedFacts = [];
+    let match;
+
+    while ((match = markdownListRegex.exec(markdownString)) !== null) {
+      selectedFacts.push(match[1]);
+    }
+    const input = `Consider the following fact${
+      selectedFacts.length == 1 ? "" : "s"
+    }:
+${selectedFacts.join("\n")}
 ${
-  singular ? "Does fact" : "Do facts"
-} ${indices} imply _${proposition}_? Think through it step by step.`;
+  selectedFacts.length == 1 ? "Do these facts" : "Does this fact"
+} imply _${proposition}_? Think through it step by step.`;
 
     const explanation = await complete({ input, model: gpt.three });
     const inference = await complete({
