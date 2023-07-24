@@ -369,7 +369,7 @@ Ensure that the remaining facts still make sense.`,
     }:
 ${selectedFacts.join("\n")}
 ${
-  selectedFacts.length == 1 ? "Do these facts" : "Does this fact"
+  selectedFacts.length == 1 ? "Does this fact" : "Do these facts"
 } imply _${proposition}_? Think through it step by step.`;
 
     const explanation = await complete({ input, model: gpt.four });
