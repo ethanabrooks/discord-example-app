@@ -24,6 +24,7 @@ import { complete } from "./gpt.js";
 import propositions from "./propositions.js";
 
 const BUILT_IN_RESPONSE_LIMIT = 2000;
+const COHERENCE_VALIDATION = false;
 const headerPrefix = "###";
 const tryAgainText = `${headerPrefix} Try again!`;
 const keepPlayingText = `${headerPrefix} Keep playing.`;
@@ -446,22 +447,26 @@ In conclusion, the proposition _${proposition}_ is probably [true|false|indeterm
     ...selections.map(select),
     ...userFacts.map(select),
   ];
-  const coherence = await getInferenceResult({
-    selections: [deselect(head), ...tail],
-    proposition,
-  });
-  if (!coherence.success) {
-    return turnResult({
-      status: "try again",
-      reasons: {
-        oneStep: oneStep.paragraphs,
-        coherence: coherence.paragraphs,
-      },
-      comments: [
-        ...commentsIntro,
-        `${oneStepComment}. However, taken with all of the existing facts, they do not imply the proposition. The proposed facts were rejected.`,
-      ],
+  let coherenceParagraphs = null;
+  if (COHERENCE_VALIDATION) {
+    const coherence = await getInferenceResult({
+      selections: [deselect(head), ...tail],
+      proposition,
     });
+    if (!coherence.success) {
+      return turnResult({
+        status: "try again",
+        reasons: {
+          oneStep: oneStep.paragraphs,
+          coherence: coherence.paragraphs,
+        },
+        comments: [
+          ...commentsIntro,
+          `${oneStepComment}. However, taken with all of the existing facts, they do not imply the proposition. The proposed facts were rejected.`,
+        ],
+      });
+    }
+    coherenceParagraphs = coherence.paragraphs;
   }
   const multiStep = await getInferenceResult({
     selections: tentative,
@@ -472,7 +477,7 @@ In conclusion, the proposition _${proposition}_ is probably [true|false|indeterm
     status,
     reasons: {
       oneStep: oneStep.paragraphs,
-      coherence: coherence.paragraphs,
+      coherence: coherenceParagraphs,
       multiStep: multiStep.paragraphs,
     },
     comments: [
@@ -576,6 +581,7 @@ async function handleThreads(
   reasons: Inferences<string[]>,
 ) {
   return await Object.entries(reasons)
+    .filter(([, texts]) => texts != null)
     .map(([key, texts]) => ({
       name: threadNames[key],
       text: texts.join("\n"),
