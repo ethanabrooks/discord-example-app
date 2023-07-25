@@ -383,22 +383,27 @@ Ensure that the remaining facts still make sense.`,
         selections.filter(({ selected }) => selected).map(({ fact }) => fact),
       );
     }
+    const concludingText = `In conclusion, the proposition _${proposition}_ is probably [true|false|indeterminate]`;
     const input = `Consider the following fact${
       selectedFacts.length == 1 ? "" : "s"
     }:
 ${selectedFacts.join("\n")}
 ${
   selectedFacts.length == 1 ? "Does this fact" : "Do these facts"
-} imply _${proposition}_? Think through it step by step.`;
-
-    const explanation = await complete({ input, model: gpt.four });
-    const inference = await complete({
-      input: `${input}
+} imply _${proposition}_? Think through it step by step. When you are done, finish with the text: "${concludingText}"`;
+    const completion = await complete({ input, model: gpt.four });
+    let [explanation, inference] = completion.split(
+      "In conclusion, the proposition",
+    );
+    if (inference == undefined) {
+      inference = await complete({
+        input: `${input}
 ${explanation}
 
-In conclusion, the proposition _${proposition}_ is probably [true|false|indeterminate]`,
-      model: gpt.three,
-    });
+${concludingText}`,
+        model: gpt.four,
+      });
+    }
     return { explanation, inference };
   }
 
