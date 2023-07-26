@@ -189,10 +189,6 @@ async function userInputToFacts(text: string) {
     .map((fact) => `${fact.trim()}.`);
 }
 
-function validFactIndex(factIndex: number, length: number) {
-  return factIndex <= 0 || length < factIndex;
-}
-
 async function promptNewFactIndex(length: number, userInput: string) {
   const requiredFactIndex = length == 1 ? `${1}` : `between 1 and ${length}`;
   return `fact index must be ${requiredFactIndex}.
@@ -249,12 +245,10 @@ function indicesText(selected: boolean[]) {
 }
 
 async function handleUpdateSubcommand({
-  factIndex,
   selections: selections,
   turn,
   userInput,
 }: {
-  factIndex: number;
   selections: Selection[];
   turn: number;
   userInput: string;
@@ -264,55 +258,18 @@ async function handleUpdateSubcommand({
   reasons: Inferences<string[]>;
   turn: number;
 }> {
-  if (validFactIndex(factIndex, selections.length)) {
-    const text = await promptNewFactIndex(
-      selections.filter(({ selected }) => selected).length,
-      userInput,
-    );
-    return {
-      selections,
-      messages: [text, getStatusText("try again")],
-      reasons: {},
-      turn,
-    };
-  }
-
   const facts = selections.map(getFact);
   const [proposition] = facts;
-  const userFacts = await userInputToFacts(userInput);
-  const plural = userFacts.length > 1;
   const commentsIntro = [
-    `${headerPrefix} Proposed new fact${plural ? "s" : ""}`,
-    ...userFacts.map((fact) => `_${fact}_`),
+    `${headerPrefix} Proposed new facts`,
+    "_" + userInput + "_",
     `${headerPrefix} Result`,
   ];
-  const replace = selections.filter(({ selected }) => selected)[factIndex - 1];
-  if (replace == undefined) {
-    throw new Error(`Fact at index ${factIndex} is undefined. Facts:
-${selections}`);
-  }
+  const replace = selections[selections.length - 1];
 
-  const oldAndNew = selections
-    .reduce(
-      ({ tentative, count }, { selected, fact }) => {
-        count = count + +selected;
-        if (count == factIndex) {
-          selected = false; // deselect the fact corresponding to factIndex
-        }
-        const selection = { fact, selected };
-        return { tentative: [...tentative, { old: true, selection }], count };
-      },
-      { tentative: [], count: 0 },
-    )
-    .tentative.concat(
-      userFacts.map(select).map((selection) => ({ old: false, selection })),
-    ); // select all userFacts
-  const tentative = oldAndNew.map(({ selection }) => selection);
-  const tentativeWithItalics = oldAndNew.map(
-    ({ old, selection: { fact, selected } }) => {
-      return { fact: old ? fact : `_${fact}_`, selected };
-    },
-  );
+  const old = selections.map(deselect);
+  const tentative = [...old, select(userInput)]; // select all userFacts
+  const tentativeWithItalics = [...old, select(`_${userInput}_`)]; // select all userFacts
 
   if (tentative.includes(replace)) {
     throw Error(`Tentative facts still include replaced fact.`);
@@ -328,11 +285,10 @@ ${selections}`);
     comments: string[];
   }) {
     const verb = goToNextTurn(status)
-      ? "You replaced"
-      : "You failed to replace";
+      ? "You substituted"
+      : "You failed to substitute";
     const whatYouDid = `\
-${verb} fact ${factIndex}: _${replace.fact}_ 
-with "${userInput}"`;
+${verb} new facts: _${userInput}_`;
     return {
       selections: goToNextTurn(status) ? tentative : selections,
       messages: [
@@ -448,17 +404,15 @@ ${concludingText}`,
       reasons: { oneStep: oneStep.paragraphs },
       comments: [
         ...commentsIntro,
-        `The new fact${plural ? "s imply" : " implies"} _${proposition}_`,
+        `The new facts imply _${proposition}_`,
         "The first fact was successfully updated.",
       ],
     });
   }
-  const oneStepComment = `The new fact${plural ? "s imply" : " implies"} _${
-    replace.fact
-  }_`;
+  const oneStepComment = `The new facts imply _${replace.fact}_`;
   const [head, ...tail]: Selection[] = [
     ...selections.map(select),
-    ...userFacts.map(select),
+    select(userInput),
   ];
   let coherenceParagraphs = null;
   if (COHERENCE_VALIDATION) {
@@ -498,9 +452,7 @@ ${concludingText}`,
       oneStepComment,
       `Taken with all of the existing facts, they also imply the target proposition: _${proposition}_`,
       multiStep.success
-        ? `Your new fact${
-            plural ? "s were" : " was"
-          } added but the target proposition still follows from updated facts.`
+        ? `Your new facts were added but the target proposition still follows from updated facts.`
         : "You broke the chain! GPT couldn't infer the target proposition from the updated facts.",
     ],
   });
@@ -682,14 +634,13 @@ export const Commands = [
           });
           break;
         case subcommands.update:
-          const { factIndex, userInput } = getOptions(interaction);
+          const { userInput } = getOptions(interaction);
           const {
             messages,
             selections,
             reasons: threads,
             turn,
           } = await handleUpdateSubcommand({
-            factIndex,
             selections: this.selections,
             turn: this.turn,
             userInput,
