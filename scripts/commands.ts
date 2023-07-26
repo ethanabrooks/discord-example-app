@@ -183,12 +183,10 @@ async function negate(text: string) {
 }
 
 async function userInputToFacts(text: string) {
-  const factsString = await complete({
-    input: `Take the following text and prefix each assertion with '\n[FACT]' or '\n[OPINION]' (break up sentences if necessary):
-        ${text}`,
-    model: gpt.three,
-  });
-  return splitFacts(factsString);
+  return text
+    .split(".")
+    .filter((fact) => fact.trim().length > 0)
+    .map((fact) => `${fact.trim()}.`);
 }
 
 function validFactIndex(factIndex: number, length: number) {
@@ -383,6 +381,7 @@ Ensure that the remaining facts still make sense.`,
         selections.filter(({ selected }) => selected).map(({ fact }) => fact),
       );
     }
+    console.log(selections);
     const concludingText = `In conclusion, the proposition _${proposition}_ is probably [true|false|indeterminate]`;
     const input = `Consider the following fact${
       selectedFacts.length == 1 ? "" : "s"
@@ -429,7 +428,7 @@ ${concludingText}`,
   }
 
   const oneStep = await getInferenceResult({
-    selections: [...selections, ...userFacts.map(select)],
+    selections: tentative,
     proposition: replace.fact,
   });
   if (!oneStep.success) {
