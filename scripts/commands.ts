@@ -429,7 +429,7 @@ ${concludingText}`,
   }
 
   const oneStep = await getInferenceResult({
-    selections: [...selections.map(deselect), ...userFacts.map(select)],
+    selections: [...selections, ...userFacts.map(select)],
     proposition: replace.fact,
   });
   if (!oneStep.success) {
