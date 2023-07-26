@@ -24,7 +24,7 @@ import { complete } from "./gpt.js";
 import propositions from "./propositions.js";
 
 const BUILT_IN_RESPONSE_LIMIT = 2000;
-const COHERENCE_VALIDATION = false;
+const COHERENCE_VALIDATION = true;
 const REMOVE_FACTS_WITH_GPT = false;
 const headerPrefix = "###";
 const tryAgainText = `${headerPrefix} Try again!`;
