@@ -14,6 +14,9 @@
         inherit system;
         config = {
           allowUnfree = true;
+          permittedInsecurePackages = [
+            "openssl-1.1.1u"
+          ];
         };
       };
     in {
@@ -24,6 +27,7 @@
           ngrok
           yarn
           libuuid
+          swiProlog
         ];
         PYTHONBREAKPOINT = "ipdb.set_trace";
         LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.libuuid];
