@@ -500,7 +500,7 @@ ${concludingText}`,
       `Taken with all of the existing facts, they also imply the target proposition: _${proposition}_`,
       multiStep.success
         ? `Your new fact${
-            plural ? "s were" : "was"
+            plural ? "s were" : " was"
           } added but the target proposition still follows from updated facts.`
         : "You broke the chain! GPT couldn't infer the target proposition from the updated facts.",
     ],
