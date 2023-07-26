@@ -515,13 +515,6 @@ ${explanation}`;
 }
 
 function getOptions(interaction: ChatInputCommandInteraction) {
-  const factIndex = interaction.options.getNumber("fact");
-  if (factIndex == undefined) {
-    throw new Error("Fact index is undefined");
-  }
-  if (factIndex == null) {
-    throw new Error("Fact index is null");
-  }
   const userInput = interaction.options.getString("new-facts");
   if (userInput == undefined) {
     throw new Error("User input is undefined");
@@ -529,7 +522,7 @@ function getOptions(interaction: ChatInputCommandInteraction) {
   if (userInput == null) {
     throw new Error("User input is null");
   }
-  return { factIndex, userInput };
+  return { userInput };
 }
 
 function chunkString(input: string, chunkSize: number): string[] {
@@ -583,12 +576,6 @@ export const Commands = [
         subcommand
           .setName(subcommands.update)
           .setDescription("Choose a fact to update.")
-          .addNumberOption((option) =>
-            option
-              .setName("fact")
-              .setDescription("The fact to remove.")
-              .setRequired(true),
-          )
           .addStringOption((option) =>
             option
               .setName("new-facts")
