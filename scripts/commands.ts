@@ -23,6 +23,47 @@ import catchError from "./utils/errors.js";
 import { complete } from "./gpt.js";
 import propositions from "./propositions.js";
 
+import pl from "tau-prolog";
+const session = pl.create();
+session.consult(
+  `\
+a.
+b :- a.
+b.
+`,
+  {
+    success: function () {
+      /* Program parsed correctly */
+      session.query("b.", {
+        success: function (goal) {
+          session.answer({
+            success: function (answer) {
+              console.log("ANSWER", pl.format_answer(answer));
+            },
+            error: function (err) {
+              console.log(err);
+              /* Uncaught error */
+            },
+            fail: function () {
+              /* No more answers */
+            },
+            limit: function () {
+              /* Limit exceeded */
+            },
+          });
+        },
+        error: function (err) {
+          console.log(err);
+          /* Error parsing goal */
+        },
+      });
+    },
+    error: function (err) {
+      /* Error parsing program */
+    },
+  },
+);
+
 const BUILT_IN_RESPONSE_LIMIT = 2000;
 const COHERENCE_VALIDATION = true;
 const REMOVE_FACTS_WITH_GPT = false;
@@ -30,18 +71,25 @@ const headerPrefix = "###";
 const tryAgainText = `${headerPrefix} Try again!`;
 const keepPlayingText = `${headerPrefix} Keep playing.`;
 const winText = "# You win!";
+const concludingText = (proposition: string) =>
+  `In conclusion, the proposition _${proposition}_ is probably [true|false|indeterminate]`;
+
 type Inferences<Type> = {
-  oneStep?: Type;
+  priorKnowledge?: Type;
   coherence?: Type;
   multiStep?: Type;
 };
-type Selection = {
-  fact: string;
-  selected: boolean;
-};
+
+interface Proposition {
+  prolog: string;
+  text: string;
+}
+interface Knowledge extends Proposition {
+  implied: boolean;
+}
 
 const threadNames: Inferences<string> = {
-  oneStep: "Reasoning for replacement inference",
+  priorKnowledge: "Reasoning for replacement inference",
   coherence: "Reasoning for coherence inference",
   multiStep: "Reasoning for chain inference",
 };
@@ -132,12 +180,6 @@ const subcommands = {
   start: "start",
   update: "update",
 };
-function splitFacts(factsString: string) {
-  return factsString.split("\n").flatMap((line) => {
-    const index = line.indexOf("]");
-    return index === -1 ? [] : [line.substring(index + 1).trim()];
-  });
-}
 
 function factsToStrings(facts: string[]) {
   return facts.map((fact, index) => `${index + 1}. ${fact}`);
@@ -161,6 +203,11 @@ function inferenceToBoolean(inference: string) {
   return null;
 }
 
+function extractCodeBlock(text: string) {
+  const [beforeBackticks, afterBackticks] = text.split(/```.*\n/);
+  return (afterBackticks ?? beforeBackticks).trim();
+}
+
 function getUsernames(members: Collection<string, GuildMember>) {
   return Array.from(members.values())
     .filter(({ user }) => !user.bot)
@@ -180,20 +227,6 @@ async function negate(text: string) {
     input: `Negate this statement (just return the negated statement, nothing else): ${text}`,
     model: `${gpt.three}`,
   });
-}
-
-async function userInputToFacts(text: string) {
-  return text
-    .split(".")
-    .filter((fact) => fact.trim().length > 0)
-    .map((fact) => `${fact.trim()}.`);
-}
-
-async function promptNewFactIndex(length: number, userInput: string) {
-  const requiredFactIndex = length == 1 ? `${1}` : `between 1 and ${length}`;
-  return `fact index must be ${requiredFactIndex}.
-    
-(You wrote: "${userInput}")`;
 }
 
 function getStatusText(status: Status) {
@@ -221,59 +254,192 @@ function goToNextTurn(status: Status) {
   }
 }
 
-function getFact(input: Selection | string) {
-  return typeof input == "string" ? input : input.fact;
-}
+async function checkPriorKnowledge(userInput: string) {
+  const input = `Is the following statement true? Think through it step by step. When you are done, finish with the text: "${concludingText(
+    userInput,
+  )}"`;
+  const completion = await complete({ input, model: gpt.four });
+  let [explanation, inference] = completion.split(
+    "In conclusion, the proposition",
+  );
+  if (inference == undefined) {
+    inference = await complete({
+      input: `${input}
+  ${explanation}
 
-function select(input: Selection | string) {
-  const fact = getFact(input);
-  return { fact, selected: true };
-}
-
-function deselect(input: Selection | string) {
-  const fact = getFact(input);
-  return { fact, selected: false };
-}
-
-function indicesText(selected: boolean[]) {
-  const indices = selected.flatMap((selected, i) => (selected ? [i + 1] : []));
-  const last = indices.pop();
-  if (indices.length == 0) {
-    return `${last}`;
+  ${concludingText(userInput)}`,
+      model: gpt.four,
+    });
   }
-  return indices.join(", ") + ` and ${last}`;
+  const check = inferenceToBoolean(inference);
+  const paragraphs = [input, completion];
+  return { check, explanation, inference, paragraphs };
+}
+
+function getProlog(knowledgeBase: Knowledge[]) {
+  return knowledgeBase
+    .map(({ prolog, text }) => `% ${text}\n${prolog}`)
+    .join("\n\n");
+}
+
+async function addUserInputToProlog(prolog: string, userInput: string) {
+  const input = `
+  I have the following prolog script:
+  \`\`\`
+  ${prolog}
+\`\`\`
+I wish to add the following logic:
+
+> ${userInput}
+
+What new facts or rules should I add? Please supply a single code block.`;
+  const completion = await complete({ input, model: gpt.four });
+  return extractCodeBlock(completion);
+}
+
+async function getNewProlog(knowledgeBase: Knowledge[], userInput: string) {
+  const oldProlog = getProlog(knowledgeBase);
+  const newProlog = await addUserInputToProlog(oldProlog, userInput);
+
+  return newProlog
+    .split("\n\n")
+    .filter((line) => !oldProlog.includes(line))
+    .join("\n\n");
+}
+
+function isEntailed(program: string, query: string): boolean | null {
+  return session.consult(program, {
+    success: function () {
+      console.log("##### program");
+      console.log(program);
+      console.log("###################");
+      /* Program parsed correctly */
+      session.query(query, {
+        success: function () {
+          console.log("##### program");
+          console.log(program);
+          console.log("##### query");
+          console.log(query);
+          console.log("###################");
+          session.answer({
+            success: function (answer) {
+              console.log("Answer:", pl.format_answer(answer));
+              return answer;
+            },
+            error: function (err) {
+              console.log("Uncaught error");
+              throw err;
+            },
+            fail: function () {
+              /* No more answers */
+              return false;
+            },
+            limit: function () {
+              /* Limit exceeded */
+              throw Error("Limit exceeded");
+            },
+          });
+        },
+        error: function (err) {
+          /* Error parsing goal */
+          console.log("Error parsing goal");
+          return false;
+        },
+      });
+    },
+    error: function (err) {
+      /* Error parsing program */
+      console.log("Error parsing program");
+      return false;
+    },
+  });
+}
+
+function reviseKnowledgeBase(knowledgeBase: Knowledge[]): Knowledge[] {
+  if (knowledgeBase.length == 1) {
+    return knowledgeBase;
+  }
+  const [head, ...tail] = knowledgeBase;
+  const implied: boolean | null = isEntailed(getProlog(tail), head.prolog);
+  return (implied == null ? [] : [{ ...head, implied }]).concat(
+    reviseKnowledgeBase(tail),
+  );
+}
+
+function inferencePrompt(facts: string[], proposition: string) {
+  const factString = factsToStrings(facts);
+  return `Consider the following fact${facts.length == 1 ? "" : "s"}:
+  ${factString}
+  ${
+    facts.length == 1 ? "Does this fact" : "Do these facts"
+  } imply _${proposition}_? Think through it step by step. When you are done, finish with the text: "${concludingText(
+    proposition,
+  )}"`;
+}
+
+async function infer(facts: string[], proposition: string) {
+  const input = inferencePrompt(facts, proposition);
+  const completion = await complete({ input, model: gpt.four });
+  let [explanation, inference] = completion.split(
+    "In conclusion, the proposition",
+  );
+  if (inference == undefined) {
+    inference = await complete({
+      input: `${input}
+  ${explanation}
+
+  ${concludingText}`,
+      model: gpt.four,
+    });
+  }
+  return { explanation, inference };
+}
+
+async function getInferenceResult({
+  facts,
+  proposition,
+}: {
+  facts: string[];
+  proposition: string;
+}) {
+  const { explanation, inference } = await infer(facts, proposition);
+  const paragraphs = [
+    inferencePrompt(facts, proposition),
+    getInferenceText({ explanation, inference }),
+  ];
+  const success = inferenceToBoolean(inference);
+  return { paragraphs, success };
 }
 
 async function handleUpdateSubcommand({
-  selections: selections,
+  knowledgeBase,
   turn,
   userInput,
 }: {
-  selections: Selection[];
+  knowledgeBase: Knowledge[];
   turn: number;
   userInput: string;
 }): Promise<{
   messages: string[];
-  selections: Selection[];
+  knowledgeBase: Knowledge[];
   reasons: Inferences<string[]>;
   turn: number;
 }> {
-  const facts = selections.map(getFact);
-  const [proposition] = facts;
   const commentsIntro = [
     `${headerPrefix} Proposed new facts`,
     "_" + userInput + "_",
     `${headerPrefix} Result`,
   ];
-  const replace = selections[selections.length - 1];
 
-  const old = selections.map(deselect);
-  const tentative = [...old, select(userInput)]; // select all userFacts
-  const tentativeWithItalics = [...old, select(`_${userInput}_`)]; // select all userFacts
+  const priorKnowledge = await checkPriorKnowledge(userInput);
+  const prolog = await getNewProlog(knowledgeBase, userInput);
+  const knowledge = { text: userInput, prolog, implied: priorKnowledge.check };
+  const revisedKnowledgeBase = reviseKnowledgeBase([
+    ...knowledgeBase,
+    knowledge,
+  ]);
 
-  if (tentative.includes(replace)) {
-    throw Error(`Tentative facts still include replaced fact.`);
-  }
+  console.log(revisedKnowledgeBase);
 
   function turnResult({
     status,
@@ -288,17 +454,23 @@ async function handleUpdateSubcommand({
       ? "You substituted"
       : "You failed to substitute";
     const whatYouDid = `\
-${verb} new facts: _${userInput}_`;
+  ${verb} new facts: _${userInput}_`;
+    const [head, ...tail] = goToNextTurn(status)
+      ? revisedKnowledgeBase
+      : knowledgeBase;
+    const facts = tail
+      .filter(({ implied }) => !implied)
+      .map(({ text }) => text);
+    const proposition = head.text;
     return {
-      selections: goToNextTurn(status) ? tentative : selections,
+      knowledgeBase, // TODO
       messages: [
         whatYouDid,
         ...comments,
         getInferenceSetupText({
-          selections: goToNextTurn(status) ? tentativeWithItalics : selections,
-          proposition,
-          showAll: false,
+          facts,
           factStatus: goToNextTurn(status) ? "updated" : "unchanged",
+          proposition,
         }),
         getStatusText(status),
       ],
@@ -307,124 +479,31 @@ ${verb} new facts: _${userInput}_`;
     };
   }
 
-  async function infer(selections: Selection[], proposition: string) {
-    if (proposition == undefined) {
-      throw new Error("Proposition is undefined");
-    }
-    let selectedFacts = [];
-    if (REMOVE_FACTS_WITH_GPT) {
-      const indices = indicesText(selections.map(({ selected }) => !selected));
-      const facts: string = factsToStrings(selections.map(getFact)).join("\n");
-      const markdownString = await complete({
-        input: `Remove fact${
-          indices.length == 1 ? "" : "s"
-        } ${indices} from the following list:
-${facts}
-Ensure that the remaining facts still make sense.`,
-        model: gpt.three,
-      });
-      const markdownListRegex = /^(\d+\.\s.+)$/gm;
-      let match;
-
-      while ((match = markdownListRegex.exec(markdownString)) !== null) {
-        selectedFacts.push(match[1]);
-      }
-      if (selectedFacts.length == 0) {
-        selectedFacts.push(markdownString);
-      }
-    } else {
-      selectedFacts = factsToStrings(
-        selections.filter(({ selected }) => selected).map(({ fact }) => fact),
-      );
-    }
-    console.log(selections);
-    const concludingText = `In conclusion, the proposition _${proposition}_ is probably [true|false|indeterminate]`;
-    const input = `Consider the following fact${
-      selectedFacts.length == 1 ? "" : "s"
-    }:
-${selectedFacts.join("\n")}
-${
-  selectedFacts.length == 1 ? "Does this fact" : "Do these facts"
-} imply _${proposition}_? Think through it step by step. When you are done, finish with the text: "${concludingText}"`;
-    const completion = await complete({ input, model: gpt.four });
-    let [explanation, inference] = completion.split(
-      "In conclusion, the proposition",
-    );
-    if (inference == undefined) {
-      inference = await complete({
-        input: `${input}
-${explanation}
-
-${concludingText}`,
-        model: gpt.four,
-      });
-    }
-    return { explanation, inference };
-  }
-
-  async function getInferenceResult({
-    selections,
-    proposition,
-  }: {
-    selections: Selection[];
-    proposition: string;
-  }) {
-    const { explanation, inference } = await infer(selections, proposition);
-    const paragraphs = [
-      getInferenceSetupText({
-        factStatus: "initial",
-        proposition,
-        selections,
-        showAll: false,
-      }),
-      getInferenceText({ explanation, inference }),
-    ];
-    const success = inferenceToBoolean(inference);
-    return { paragraphs, success };
-  }
-
-  const oneStep = await getInferenceResult({
-    selections: tentative,
-    proposition: replace.fact,
-  });
-  if (!oneStep.success) {
-    return turnResult({
-      status: "try again",
-      reasons: { oneStep: oneStep.paragraphs },
-      comments: [
-        ...commentsIntro,
-        "The new facts did not imply the replaced fact.",
-      ],
-    });
-  }
-
   if (turn == 0) {
     return turnResult({
       status: "continue",
-      reasons: { oneStep: oneStep.paragraphs },
+      reasons: { priorKnowledge: [priorKnowledge.explanation] },
       comments: [
         ...commentsIntro,
-        `The new facts imply _${proposition}_`,
+        // `The new facts imply _${proposition}_`, // TODO
         "The first fact was successfully updated.",
       ],
     });
   }
-  const oneStepComment = `The new facts imply _${replace.fact}_`;
-  const [head, ...tail]: Selection[] = [
-    ...selections.map(select),
-    select(userInput),
-  ];
+  const oneStepComment = `The new facts `;
+  const [head, ...tail]: Knowledge[] = knowledgeBase;
+  const proposition = head.text;
   let coherenceParagraphs = null;
   if (COHERENCE_VALIDATION) {
     const coherence = await getInferenceResult({
-      selections: [deselect(head), ...tail],
+      facts: tail.map(({ text }) => text),
       proposition,
     });
     if (!coherence.success) {
       return turnResult({
         status: "try again",
         reasons: {
-          oneStep: oneStep.paragraphs,
+          priorKnowledge: priorKnowledge.paragraphs,
           coherence: coherence.paragraphs,
         },
         comments: [
@@ -436,14 +515,14 @@ ${concludingText}`,
     coherenceParagraphs = coherence.paragraphs;
   }
   const multiStep = await getInferenceResult({
-    selections: tentative,
+    facts: tail.filter(({ implied }) => !implied).map(({ text }) => text),
     proposition,
   });
   const status = multiStep.success ? "continue" : "win";
   return turnResult({
     status,
     reasons: {
-      oneStep: oneStep.paragraphs,
+      priorKnowledge: priorKnowledge.paragraphs,
       coherence: coherenceParagraphs,
       multiStep: multiStep.paragraphs,
     },
@@ -476,23 +555,15 @@ function getFactWord(status: FactStatus) {
 }
 
 function getInferenceSetupText({
-  selections,
-  proposition,
+  facts,
   factStatus,
-  showAll = true,
+  proposition,
 }: {
+  facts: string[];
   factStatus: FactStatus;
-  selections: Selection[];
-  proposition: string;
-  showAll?: boolean;
+  proposition;
 }) {
-  const factStrings = factsToStrings(
-    selections
-      .filter(({ selected }) => selected)
-      .map(({ fact: proposition, selected }): string =>
-        selected && showAll ? bold(proposition) : proposition,
-      ),
-  );
+  const factStrings = factsToStrings(facts);
   return `\
 ${headerPrefix} The fact${factStrings.length == 1 ? "" : "s"} are${getFactWord(
     factStatus,
@@ -501,6 +572,7 @@ ${factStrings.join("\n")}
 ${headerPrefix} Target Proposition
 _${proposition}_`;
 }
+
 function getInferenceText({
   explanation,
   inference,
@@ -583,7 +655,7 @@ export const Commands = [
               .setRequired(true),
           ),
       ),
-    selections: [],
+    knowledgeBase: [],
     players: [],
     turn: 0,
     async execute(interaction: ChatInputCommandInteraction) {
@@ -599,12 +671,37 @@ export const Commands = [
             this.players = getUsernames(members);
           }
           const truth = randomBoolean();
-          let proposition = interaction.options.getString("proposition");
-          if (proposition == undefined) {
-            const positiveFact = `${randomChoice(propositions)}.`;
-            proposition = truth ? positiveFact : await negate(positiveFact);
+          const propositionText: string | undefined =
+            interaction.options.getString("proposition");
+          let proposition: { text: string; prolog: string };
+          if (propositionText == undefined) {
+            const positive = randomChoice<Proposition>(propositions);
+            proposition = truth
+              ? positive
+              : {
+                  text: await negate(positive.text),
+                  prolog: `not_${positive.prolog}`,
+                };
+          } else {
+            proposition = propositions.find(
+              ({ text }) => text == propositionText,
+            );
+            if (proposition == undefined) {
+              const completion = await complete({
+                input: `Convert the statement, "${propositionText}," into a prolog assertion.`,
+                model: gpt.three,
+              });
+              const prolog = extractCodeBlock(completion);
+              proposition = { text: propositionText, prolog };
+            }
           }
-          this.selections = [{ fact: proposition, selected: true }];
+          this.knowledgeBase = [
+            {
+              text: proposition.text,
+              prolog: proposition.prolog,
+              implied: false,
+            },
+          ];
           const channel = interaction.channel;
           if (channel == null) {
             throw Error("Cannot send message to null channel");
@@ -613,10 +710,9 @@ export const Commands = [
           await handleInteraction({
             interaction,
             message: getInferenceSetupText({
+              facts: [proposition.text],
               factStatus: "initial",
-              proposition,
-              selections: this.selections,
-              showAll: false,
+              proposition: proposition.text,
             }),
           });
           break;
@@ -624,16 +720,16 @@ export const Commands = [
           const { userInput } = getOptions(interaction);
           const {
             messages,
-            selections,
+            knowledgeBase,
             reasons: threads,
             turn,
           } = await handleUpdateSubcommand({
-            selections: this.selections,
+            knowledgeBase: this.knowledgeBase,
             turn: this.turn,
             userInput,
           });
           const message = messages.join("\n");
-          this.selections = selections;
+          this.knowledgeBase = knowledgeBase;
           this.turn = turn;
 
           if (interaction.channel instanceof TextChannel) {

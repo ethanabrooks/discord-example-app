@@ -1,50 +1,51 @@
-import "dotenv/config";
-import express from "express";
-import { InteractionType, InteractionResponseType } from "discord-interactions";
-import { VerifyDiscordRequest, getRandomEmoji } from "./utils.js";
+import pl from "tau-prolog";
+const session = pl.create();
+session.consult(
+  `\
+% The attachment ends in .txt. When I tried to open it as a PDF, my PDF reader threw an error.
+% The email attachment is a txt file.
+attachment_type(email_attachment, txt).
 
-// Create an express app
-const app = express();
-// Get port, or default to 3000
-const PORT = process.env.PORT || 3000;
-// Parse request body and verifies incoming requests using discord-interactions package
-app.use(express.json({ verify: VerifyDiscordRequest(process.env.PUBLIC_KEY) }));
+% The email attachment ends with .txt.
+attachment_extension(email_attachment, '.txt').
 
-/**
- * Interactions endpoint URL where Discord will send HTTP requests
- */
-app.post("/interactions", async function (req, res) {
-  // Interaction type and data
-  const { type, id, data } = req.body;
+% The PDF reader throws an error when trying to open a non-PDF file.
+throws_error(PDF_reader, File) :-
+    attachment_type(File, Type),
+    not_attachment_type(File, pdf),
+    Type \= pdf.
+`,
+  {
+    success: function () {
+      /* Program parsed correctly */
 
-  /**
-   * Handle verification requests
-   */
-  if (type === InteractionType.PING) {
-    return res.send({ type: InteractionResponseType.PONG });
-  }
-
-  /**
-   * Handle slash command requests
-   * See https://discord.com/developers/docs/interactions/application-commands#slash-commands
-   */
-  if (type === InteractionType.APPLICATION_COMMAND) {
-    const { name } = data;
-
-    // "test" command
-    if (name === "test") {
-      // Send a message into the channel where command was triggered from
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          // Fetches a random emoji to send from a helper function
-          content: "Hello world " + getRandomEmoji(),
+      session.query("attachment_type(email_attachment, txt).", {
+        success: function (goal) {
+          session.answer({
+            success: function (answer) {
+              console.log("ANSWER", pl.format_answer(answer));
+            },
+            error: function (err) {
+              console.log(err);
+              /* Uncaught error */
+            },
+            fail: function () {
+              console.log("HERE");
+              /* No more answers */
+            },
+            limit: function () {
+              /* Limit exceeded */
+            },
+          });
+        },
+        error: function (err) {
+          console.log(err);
+          /* Error parsing goal */
         },
       });
-    }
-  }
-});
-
-app.listen(PORT, () => {
-  console.log("Listening on port", PORT);
-});
+    },
+    error: function (err) {
+      /* Error parsing program */
+    },
+  },
+);
