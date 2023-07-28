@@ -127,6 +127,8 @@ const gpt = {
   four: "gpt-4",
 };
 const subcommands = {
+  add: "add",
+  replace: "replace",
   start: "start",
   update: "update",
 };
@@ -423,6 +425,14 @@ function getUpdateOptions(interaction: ChatInputCommandInteraction) {
   return { newFact };
 }
 
+function getReplaceOptions(interaction: ChatInputCommandInteraction) {
+  const replace = interaction.options.getString("replace");
+  const newFact = interaction.options.getString("new-facts");
+  throwIfUndefined(newFact, "replace");
+  throwIfUndefined(newFact, "new-fact");
+  return { newFact, replace };
+}
+
 function chunkString(input: string, chunkSize: number): string[] {
   return input.length == 0
     ? []
@@ -497,19 +507,31 @@ async function handleStart(interaction: ChatInputCommandInteraction) {
   });
 }
 
-async function handleUpdate(interaction: ChatInputCommandInteraction) {
-  const { newFact } = getUpdateOptions(interaction);
+async function handleOther(interaction: ChatInputCommandInteraction) {
+  let { newFact } = getUpdateOptions(interaction);
 
   const turnObject = await prisma.turn.findFirst({
     include: { game: true, facts: true },
     where: { game: { channel: interaction.channelId } },
     orderBy: { id: "desc" },
   });
-  console.log(turnObject);
   const { facts, turn, game } = turnObject;
   const factTexts = facts.map(({ text }) => text);
   const currentFact = factTexts[factTexts.length - 1];
   const oldFacts = factTexts.slice(0, factTexts.length - 1);
+
+  const subcommand = interaction.options.getSubcommand();
+  switch (subcommand) {
+    case "add":
+      newFact = `${currentFact} ${newFact}`;
+      break;
+    case "replace":
+      const { replace } = getReplaceOptions(interaction);
+      newFact = currentFact.replace(replace, newFact);
+      break;
+    default:
+      break;
+  }
 
   const {
     completions,
@@ -585,12 +607,42 @@ export const Commands = [
       )
       .addSubcommand((subcommand) =>
         subcommand
-          .setName(subcommands.update)
-          .setDescription("Choose a new set of facts.")
+          .setName(subcommands.add)
+          .setDescription("Choose a new set of facts to add the old set.")
           .addStringOption((option) =>
             option
               .setName("new-facts")
-              .setDescription("The facts to replace it with.")
+              .setDescription("The new facts to add")
+              .setRequired(true),
+          ),
+      )
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName(subcommands.update)
+          .setDescription("Choose a new set of facts to replace the old set.")
+          .addStringOption((option) =>
+            option
+              .setName("new-facts")
+              .setDescription("The new facts to replace the old ones with.")
+              .setRequired(true),
+          ),
+      )
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName(subcommands.replace)
+          .setDescription(
+            "Choose a new set of facts to replace a substring of the old set.",
+          )
+          .addStringOption((option) =>
+            option
+              .setName("replace")
+              .setDescription("The substring to replace the new facts.")
+              .setRequired(true),
+          )
+          .addStringOption((option) =>
+            option
+              .setName("new-facts")
+              .setDescription("The new facts to replace the substring with.")
               .setRequired(true),
           ),
       ),
@@ -601,11 +653,8 @@ export const Commands = [
         case subcommands.start:
           await handleStart(interaction);
           break;
-        case subcommands.update:
-          await handleUpdate(interaction);
-          break;
-
         default:
+          await handleOther(interaction);
           break;
       }
     },
