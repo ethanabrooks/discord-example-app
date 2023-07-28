@@ -250,6 +250,7 @@ async function handleUpdateSubcommand({
   messages: string[];
   selections: Selection[];
   completions: Inferences<Completion[]>;
+  status: Status;
   turn: number;
 }> {
   if (validFactIndex(factIndex, selections.length)) {
@@ -257,10 +258,12 @@ async function handleUpdateSubcommand({
       selections.filter(({ selected }) => selected).length,
       userInput,
     );
+    const status = "try again";
     return {
       selections,
-      messages: [text, getStatusText("try again")],
+      messages: [text, getStatusText(status)],
       completions: {},
+      status,
       turn,
     };
   }
@@ -335,6 +338,7 @@ with "${userInput}"`;
         getStatusText(status),
       ],
       completions,
+      status,
       turn: turn + +goToNextTurn(status),
     };
   }
@@ -623,7 +627,7 @@ async function handleStart(interaction: ChatInputCommandInteraction) {
         create: {
           facts: { create: newSelection },
           player: interaction.user.username,
-          won: false,
+          status: "initial",
           turn: 0,
         },
       },
@@ -661,6 +665,7 @@ async function handleUpdate(interaction: ChatInputCommandInteraction) {
     messages,
     selections,
     completions,
+    status,
     turn: newTurn,
   } = await handleUpdateSubcommand({
     factIndex,
@@ -685,7 +690,7 @@ async function handleUpdate(interaction: ChatInputCommandInteraction) {
       },
       gameId: game.id,
       player: interaction.user.username,
-      won: false, // TODO
+      status,
       turn: newTurn,
       proposed: userInput,
     },

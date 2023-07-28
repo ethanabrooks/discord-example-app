@@ -33,7 +33,7 @@ model Turn {
   facts       Fact[]
   player      String
   proposed    String?
-  won         Boolean
+  status      String
   turn        Int
   completions Completion[]
 }
