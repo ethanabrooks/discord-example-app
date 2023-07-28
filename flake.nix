@@ -14,6 +14,9 @@
         inherit system;
         config = {
           allowUnfree = true;
+          permittedInsecurePackages = [
+            "openssl-1.1.1u"
+          ];
         };
       };
     in {
@@ -26,7 +29,7 @@
           libuuid
         ];
         PYTHONBREAKPOINT = "ipdb.set_trace";
-        LD_LIBRARY_PATH = with pkgs; lib.makeLibraryPath [libuuid openssl];
+        LD_LIBRARY_PATH = with pkgs; lib.makeLibraryPath [libuuid openssl_1_1];
         shellHook = ''
           set -o allexport
           source .env
