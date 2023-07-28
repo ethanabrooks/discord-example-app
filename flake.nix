@@ -26,7 +26,7 @@
           libuuid
         ];
         PYTHONBREAKPOINT = "ipdb.set_trace";
-        LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.libuuid];
+        LD_LIBRARY_PATH = with pkgs; lib.makeLibraryPath [libuuid openssl];
         shellHook = ''
           set -o allexport
           source .env
