@@ -38,8 +38,9 @@ model Turn {
 }
 
 model Game {
-  id          Int    @id @default(autoincrement())
-  turns       Turn[]
-  channel     String
-  proposition String
+  id             Int     @id @default(autoincrement())
+  turns          Turn[]
+  channel        String
+  coherenceCheck Boolean
+  proposition    String
 }

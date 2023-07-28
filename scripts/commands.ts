@@ -24,8 +24,6 @@ import { PrismaClient } from "@prisma/client";
 export const prisma = new PrismaClient();
 
 const BUILT_IN_RESPONSE_LIMIT = 2000;
-const COHERENCE_VALIDATION = true;
-const REMOVE_FACTS_WITH_GPT = false;
 const headerPrefix = "###";
 const tryAgainText = `${headerPrefix} Try again!`;
 const keepPlayingText = `${headerPrefix} Keep playing.`;
@@ -216,12 +214,14 @@ ${concludingText}`,
 }
 
 async function step({
+  coherenceCheck,
   currentFact,
   newFact,
   oldFacts,
   proposition,
   turn,
 }: {
+  coherenceCheck: boolean;
   currentFact: string;
   newFact: string;
   oldFacts: string[];
@@ -299,7 +299,7 @@ with: "${newFact}"`;
   }
   const oneStepComment = `The new facts _${newFact}_`;
   let coherenceCompletions = null;
-  if (COHERENCE_VALIDATION) {
+  if (coherenceCheck) {
     const coherence = await getInferenceResult({
       premise: [...oldFacts, newFact].join("\n"),
       conclusion: proposition,
@@ -399,14 +399,27 @@ ${headerPrefix} Explanation
 ${explanation}`;
 }
 
-function getOptions(interaction: ChatInputCommandInteraction) {
+function throwIfUndefined<T>(value: T | undefined, name: string) {
+  if (value == undefined) {
+    throw new Error(`${name} is undefined`);
+  }
+  if (value == null) {
+    throw new Error(`${name} is null`);
+  }
+}
+
+function getStartOptions(interaction: ChatInputCommandInteraction) {
+  let proposition = interaction.options.getString("proposition");
+  let coherenceCheck = interaction.options.getBoolean("coherence-check");
+  if (coherenceCheck == undefined) {
+    coherenceCheck = false;
+  }
+  return { proposition, coherenceCheck };
+}
+
+function getUpdateOptions(interaction: ChatInputCommandInteraction) {
   const newFact = interaction.options.getString("new-facts");
-  if (newFact == undefined) {
-    throw new Error("User input is undefined");
-  }
-  if (newFact == null) {
-    throw new Error("User input is null");
-  }
+  throwIfUndefined(newFact, "new-fact");
   return { newFact };
 }
 
@@ -450,8 +463,8 @@ ${output}
 }
 
 async function handleStart(interaction: ChatInputCommandInteraction) {
+  let { proposition, coherenceCheck } = getStartOptions(interaction);
   const truth = randomBoolean();
-  let proposition = interaction.options.getString("proposition");
   if (proposition == undefined) {
     const positiveFact = `${randomChoice(propositions)}.`;
     proposition = truth ? positiveFact : (await negate(positiveFact)).output;
@@ -460,6 +473,7 @@ async function handleStart(interaction: ChatInputCommandInteraction) {
   const game = await prisma.game.create({
     data: {
       channel: interaction.channelId,
+      coherenceCheck,
       proposition,
       turns: {
         create: {
@@ -484,7 +498,7 @@ async function handleStart(interaction: ChatInputCommandInteraction) {
 }
 
 async function handleUpdate(interaction: ChatInputCommandInteraction) {
-  const { newFact } = getOptions(interaction);
+  const { newFact } = getUpdateOptions(interaction);
 
   const turnObject = await prisma.turn.findFirst({
     include: { game: true, facts: true },
@@ -503,6 +517,7 @@ async function handleUpdate(interaction: ChatInputCommandInteraction) {
     status,
     turn: newTurn,
   } = await step({
+    coherenceCheck: game.coherenceCheck,
     currentFact,
     newFact,
     oldFacts,
@@ -550,7 +565,7 @@ export const Commands = [
   {
     data: new SlashCommandBuilder()
       .setName("play")
-      .setDescription(`Play inference Jenga`)
+      .setDescription(`Play break the chain`)
       .addSubcommand((subcommand) =>
         subcommand
           .setName(subcommands.start)
@@ -559,6 +574,12 @@ export const Commands = [
             option
               .setName("proposition")
               .setDescription("The target proposition that GPT tries to prove.")
+              .setRequired(false),
+          )
+          .addBooleanOption((option) =>
+            option
+              .setName("coherence-check")
+              .setDescription("Whether to check for coherence.")
               .setRequired(false),
           ),
       )
