@@ -236,6 +236,80 @@ function indicesText(selected: boolean[]) {
   return indices.join(", ") + ` and ${last}`;
 }
 
+async function infer(selections: Selection[], proposition: string) {
+  if (proposition == undefined) {
+    throw new Error("Proposition is undefined");
+  }
+  let selectedFacts = [];
+  const completions: Completion[] = [];
+  if (REMOVE_FACTS_WITH_GPT) {
+    const indices = indicesText(selections.map(({ selected }) => !selected));
+    const facts: string = factsToStrings(selections.map(getSelectionText)).join(
+      "\n",
+    );
+    const markdownCompletion = await complete({
+      input: `Remove fact${
+        indices.length == 1 ? "" : "s"
+      } ${indices} from the following list:
+${facts}
+Ensure that the remaining facts still make sense.`,
+      model: gpt.three,
+    });
+    completions.push(markdownCompletion);
+    const markdownListRegex = /^(\d+\.\s.+)$/gm;
+    let match;
+
+    while (
+      (match = markdownListRegex.exec(markdownCompletion.output)) !== null
+    ) {
+      selectedFacts.push(match[1]);
+    }
+    if (selectedFacts.length == 0) {
+      selectedFacts.push(markdownCompletion.output);
+    }
+  } else {
+    selectedFacts = factsToStrings(
+      selections.filter(({ selected }) => selected).map(({ text }) => text),
+    );
+  }
+  const concludingText = `In conclusion, the proposition _${proposition}_ is probably [true|false|indeterminate]`;
+  const input = `Consider the following fact${
+    selectedFacts.length == 1 ? "" : "s"
+  }:
+${selectedFacts.join("\n")}
+${
+  selectedFacts.length == 1 ? "Does this fact" : "Do these facts"
+} imply _${proposition}_? Think through it step by step. When you are done, finish with the text: "${concludingText}"`;
+  const completion = await complete({ input, model: gpt.four });
+  completions.push(completion);
+  let [explanation, inference] = completion.output.split(
+    "In conclusion, the proposition",
+  );
+  if (inference == undefined) {
+    const inferenceCompletion = await complete({
+      input: `${input}
+${explanation}
+
+${concludingText}`,
+      model: gpt.four,
+    });
+    completions.push(inferenceCompletion);
+    inference = inferenceCompletion.output;
+  }
+  return { inference, completions };
+}
+
+async function getInferenceResult({
+  selections,
+  proposition,
+}: {
+  selections: Selection[];
+  proposition: string;
+}) {
+  const { completions, inference } = await infer(selections, proposition);
+  const success = inferenceToBoolean(inference);
+  return { completions, success };
+}
 async function handleUpdateSubcommand({
   factIndex,
   selections: selections,
@@ -304,11 +378,6 @@ ${selections}`);
       return { text: old ? text : `_${text}_`, selected };
     },
   );
-
-  if (tentative.includes(replace)) {
-    throw Error(`Tentative facts still include replaced fact.`);
-  }
-
   function turnResult({
     status,
     completions,
@@ -343,79 +412,8 @@ with "${userInput}"`;
     };
   }
 
-  async function infer(selections: Selection[], proposition: string) {
-    if (proposition == undefined) {
-      throw new Error("Proposition is undefined");
-    }
-    let selectedFacts = [];
-    const completions: Completion[] = [];
-    if (REMOVE_FACTS_WITH_GPT) {
-      const indices = indicesText(selections.map(({ selected }) => !selected));
-      const facts: string = factsToStrings(
-        selections.map(getSelectionText),
-      ).join("\n");
-      const markdownCompletion = await complete({
-        input: `Remove fact${
-          indices.length == 1 ? "" : "s"
-        } ${indices} from the following list:
-${facts}
-Ensure that the remaining facts still make sense.`,
-        model: gpt.three,
-      });
-      completions.push(markdownCompletion);
-      const markdownListRegex = /^(\d+\.\s.+)$/gm;
-      let match;
-
-      while (
-        (match = markdownListRegex.exec(markdownCompletion.output)) !== null
-      ) {
-        selectedFacts.push(match[1]);
-      }
-      if (selectedFacts.length == 0) {
-        selectedFacts.push(markdownCompletion.output);
-      }
-    } else {
-      selectedFacts = factsToStrings(
-        selections.filter(({ selected }) => selected).map(({ text }) => text),
-      );
-    }
-    const concludingText = `In conclusion, the proposition _${proposition}_ is probably [true|false|indeterminate]`;
-    const input = `Consider the following fact${
-      selectedFacts.length == 1 ? "" : "s"
-    }:
-${selectedFacts.join("\n")}
-${
-  selectedFacts.length == 1 ? "Does this fact" : "Do these facts"
-} imply _${proposition}_? Think through it step by step. When you are done, finish with the text: "${concludingText}"`;
-    const completion = await complete({ input, model: gpt.four });
-    completions.push(completion);
-    let [explanation, inference] = completion.output.split(
-      "In conclusion, the proposition",
-    );
-    if (inference == undefined) {
-      const inferenceCompletion = await complete({
-        input: `${input}
-${explanation}
-
-${concludingText}`,
-        model: gpt.four,
-      });
-      completions.push(inferenceCompletion);
-      inference = inferenceCompletion.output;
-    }
-    return { inference, completions };
-  }
-
-  async function getInferenceResult({
-    selections,
-    proposition,
-  }: {
-    selections: Selection[];
-    proposition: string;
-  }) {
-    const { completions, inference } = await infer(selections, proposition);
-    const success = inferenceToBoolean(inference);
-    return { completions, success };
+  if (tentative.includes(replace)) {
+    throw Error(`Tentative facts still include replaced fact.`);
   }
 
   const oneStep = await getInferenceResult({

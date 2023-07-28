@@ -1,9 +1,9 @@
 -- Create a new table called 'propositions' in schema 'break_the_chain'
 -- Drop the table if it already exists
-DROP TABLE IF EXISTS "break_the_chain"."propositions";
+DROP TABLE IF EXISTS "propositions";
 
 -- Create the table in the specified schema
-CREATE TABLE "break_the_chain"."propositions"
+CREATE TABLE "propositions"
 (
         channel TEXT NOT NULL,
         game INTEGER NOT NULL,
@@ -13,10 +13,10 @@ CREATE TABLE "break_the_chain"."propositions"
 
 -- Create a new table called 'facts' in schema 'break_the_chain'
 -- Drop the table if it already exists
-DROP TABLE IF EXISTS "break_the_chain"."facts";
+DROP TABLE IF EXISTS "facts";
 
 -- Create the table in the specified schema
-CREATE TABLE "break_the_chain"."facts"
+CREATE TABLE "facts"
 (
         channel TEXT NOT NULL,
         game INTEGER NOT NULL,
@@ -27,15 +27,15 @@ CREATE TABLE "break_the_chain"."facts"
         player TEXT NOT NULL,
         won BOOLEAN NOT NULL,
         PRIMARY KEY (channel, game, turn, position),
-        FOREIGN KEY (channel, game) REFERENCES "break_the_chain"."propositions" (channel, game)
+        FOREIGN KEY (channel, game) REFERENCES "propositions" (channel, game)
 );
 
 -- Create a new table called 'explanations' in schema 'break_the_chain'
 -- Drop the table if it already exists
-DROP TABLE IF EXISTS "break_the_chain"."explanations";
+DROP TABLE IF EXISTS "explanations";
 
 -- Create the table in the specified schema
-CREATE TABLE "break_the_chain"."explanations"
+CREATE TABLE "explanations"
 (
         channel TEXT NOT NULL,
         game INTEGER NOT NULL,
@@ -44,5 +44,5 @@ CREATE TABLE "break_the_chain"."explanations"
         string TEXT NOT NULL,
         category TEXT NOT NULL,
         PRIMARY KEY (channel, game, turn, position),
-        FOREIGN KEY (channel, game, turn, position) REFERENCES "break_the_chain"."facts" (channel, game, turn, position)
+        FOREIGN KEY (channel, game, turn, position) REFERENCES "facts" (channel, game, turn, position)
 );
