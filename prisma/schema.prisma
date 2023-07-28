@@ -23,14 +23,13 @@ model Fact {
   turn     Turn    @relation(fields: [turnId], references: [id])
   turnId   Int
   text     String
-  selected Boolean
 }
 
 model Turn {
   id          Int          @id @default(autoincrement())
   game        Game         @relation(fields: [gameId], references: [id])
   gameId      Int
-  facts       Fact[]
+  facts        Fact[]
   player      String
   proposed    String?
   status      String
