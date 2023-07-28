@@ -11,6 +11,7 @@
     "build": "tsc --build",
     "clean": "tsc --build --clean",
     "dev": "nodemon --exec \"tsc --build && node dist/app.js\"",
+    "migrate": "prisma migrate dev --name init",
     "register": "node dist/commands.js",
     "start": "tsc --build && node dist/app.js",
     "watch-ts": "tsc -w",
