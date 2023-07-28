@@ -548,7 +548,7 @@ async function handleOther(interaction: ChatInputCommandInteraction) {
   });
 
   const completionsArray: Completion[] = Object.values(completions).flatMap(
-    (c) => c,
+    (c) => (c == null ? [] : c),
   );
   if (goToNextTurn(status)) {
     factTexts.push(newFact);

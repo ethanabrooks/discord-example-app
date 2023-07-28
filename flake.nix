@@ -27,7 +27,9 @@
           ngrok
           yarn
           libuuid
+          openssl_1_1
         ];
+        OPENSSL_PATH = "${builtins.toString pkgs.openssl_1_1.out}/lib/";
         PYTHONBREAKPOINT = "ipdb.set_trace";
         shellHook = ''
           set -o allexport
