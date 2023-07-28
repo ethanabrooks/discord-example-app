@@ -22,6 +22,9 @@ import { Stream } from "form-data";
 import catchError from "./utils/errors.js";
 import { complete } from "./gpt.js";
 import propositions from "./propositions.js";
+import { PrismaClient } from "@prisma/client";
+
+export const prisma = new PrismaClient();
 
 const BUILT_IN_RESPONSE_LIMIT = 2000;
 const COHERENCE_VALIDATION = true;
@@ -610,6 +613,90 @@ async function handleThreads(
     });
 }
 
+async function handleStart(interaction: ChatInputCommandInteraction) {
+  const truth = randomBoolean();
+  let proposition = interaction.options.getString("proposition");
+  if (proposition == undefined) {
+    const positiveFact = `${randomChoice(propositions)}.`;
+    proposition = truth ? positiveFact : await negate(positiveFact);
+  }
+  const newSelections = [{ fact: proposition, selected: true }];
+
+  await handleInteraction({
+    interaction,
+    message: getInferenceSetupText({
+      factStatus: "initial",
+      proposition,
+      selections: newSelections,
+      showAll: false,
+    }),
+  });
+  await prisma.game.create({
+    data: {
+      channelId: interaction.channelId,
+      proposition,
+      turns: {
+        create: {
+          facts: { create: { text: proposition, selected: true } },
+          player: interaction.user.username,
+          won: false,
+          count: 0,
+        },
+      },
+    },
+  });
+}
+
+async function handleUpdate(interaction: ChatInputCommandInteraction) {
+  const { factIndex, userInput } = getOptions(interaction);
+
+  const { facts, count, game } = await prisma.turn.findFirst({
+    include: { game: true, facts: true },
+    where: { game: { channelId: interaction.channelId } },
+    orderBy: { id: "desc" },
+  });
+  const inputSelections = facts.map(
+    ({ text, selected }): Selection => ({
+      fact: text,
+      selected,
+    }),
+  );
+
+  const {
+    messages,
+    selections,
+    reasons: threads,
+    turn,
+  } = await handleUpdateSubcommand({
+    factIndex,
+    selections: inputSelections,
+    turn: count,
+    userInput,
+  });
+  const message = messages.join("\n");
+
+  await prisma.turn.create({
+    data: {
+      facts: {
+        create: selections.map(({ fact, selected }) => ({
+          text: fact,
+          selected,
+        })),
+      },
+      gameId: game.id,
+      player: interaction.user.username,
+      won: false, // TODO
+      count: turn,
+      proposed: userInput,
+    },
+  });
+
+  if (interaction.channel instanceof TextChannel) {
+    await handleThreads(interaction.channel, threads);
+  }
+
+  return await handleInteraction({ interaction, message });
+}
 // Create commands
 export const Commands = [
   {
@@ -644,65 +731,16 @@ export const Commands = [
               .setRequired(true),
           ),
       ),
-    selections: [],
-    players: [],
-    turn: 0,
     async execute(interaction: ChatInputCommandInteraction) {
       await interaction.deferReply();
       const subcommand = interaction.options.getSubcommand();
       switch (subcommand) {
         case subcommands.start:
-          const members: ThreadMemberManager | Collection<string, GuildMember> =
-            interaction.channel.members;
-          if (members instanceof ThreadMemberManager) {
-            throw Error("Thread Member Manager");
-          } else {
-            this.players = getUsernames(members);
-          }
-          const truth = randomBoolean();
-          let proposition = interaction.options.getString("proposition");
-          if (proposition == undefined) {
-            const positiveFact = `${randomChoice(propositions)}.`;
-            proposition = truth ? positiveFact : await negate(positiveFact);
-          }
-          this.selections = [{ fact: proposition, selected: true }];
-          const channel = interaction.channel;
-          if (channel == null) {
-            throw Error("Cannot send message to null channel");
-          }
-
-          await handleInteraction({
-            interaction,
-            message: getInferenceSetupText({
-              factStatus: "initial",
-              proposition,
-              selections: this.selections,
-              showAll: false,
-            }),
-          });
+          await handleStart(interaction);
           break;
         case subcommands.update:
-          const { factIndex, userInput } = getOptions(interaction);
-          const {
-            messages,
-            selections,
-            reasons: threads,
-            turn,
-          } = await handleUpdateSubcommand({
-            factIndex,
-            selections: this.selections,
-            turn: this.turn,
-            userInput,
-          });
-          const message = messages.join("\n");
-          this.selections = selections;
-          this.turn = turn;
-
-          if (interaction.channel instanceof TextChannel) {
-            await handleThreads(interaction.channel, threads);
-          }
-
-          return await handleInteraction({ interaction, message });
+          await handleUpdate(interaction);
+          break;
 
         default:
           break;

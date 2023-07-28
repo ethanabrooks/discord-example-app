@@ -1,0 +1,43 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Fact {
+  id       Int     @id @default(autoincrement())
+  turn     Turn    @relation(fields: [turnId], references: [id])
+  turnId   Int
+  text     String
+  selected Boolean
+}
+
+model Turn {
+  id       Int     @id @default(autoincrement())
+  game     Game    @relation(fields: [gameId], references: [id])
+  gameId   Int
+  facts    Fact[]
+  player   String
+  proposed String?
+  won      Boolean
+  count    Int
+}
+
+model Game {
+  id          Int     @id @default(autoincrement())
+  turns       Turn[]
+  channel     Channel @relation(fields: [channelId], references: [id])
+  channelId   String
+  proposition String
+}
+
+model Channel {
+  id    String @id
+  games Game[]
+}

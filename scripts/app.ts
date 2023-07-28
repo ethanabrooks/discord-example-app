@@ -9,7 +9,7 @@ import {
   REST,
   Routes,
 } from "discord.js";
-import { Commands } from "./commands.js";
+import { Commands, prisma } from "./commands.js";
 import { createLogger } from "./utils/logger.js";
 
 export default class MyClient extends Client {
@@ -79,7 +79,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 const rest = new REST().setToken(token);
 
 // and deploy your commands!
-(async () => {
+async function main() {
   try {
     console.log(
       `Started refreshing ${Commands.length} application (/) commands.`,
@@ -99,4 +99,14 @@ const rest = new REST().setToken(token);
     // And of course, make sure you catch and log any errors!
     console.error(error);
   }
-})();
+}
+
+main()
+  .then(async () => {
+    await prisma.$disconnect();
+  })
+  .catch(async (e) => {
+    console.error(e);
+    await prisma.$disconnect();
+    process.exit(1);
+  });
