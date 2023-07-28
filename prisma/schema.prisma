@@ -19,19 +19,19 @@ model Completion {
 }
 
 model Fact {
-  id       Int     @id @default(autoincrement())
-  turn     Turn    @relation(fields: [turnId], references: [id])
-  turnId   Int
-  text     String
+  id     Int    @id @default(autoincrement())
+  turn   Turn   @relation(fields: [turnId], references: [id])
+  turnId Int
+  text   String
 }
 
 model Turn {
   id          Int          @id @default(autoincrement())
   game        Game         @relation(fields: [gameId], references: [id])
   gameId      Int
-  facts        Fact[]
+  facts       Fact[]
   player      String
-  proposed    String?
+  newFact     String?
   status      String
   turn        Int
   completions Completion[]

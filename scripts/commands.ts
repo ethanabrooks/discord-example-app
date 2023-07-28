@@ -500,7 +500,6 @@ async function handleUpdate(interaction: ChatInputCommandInteraction) {
   const {
     completions,
     messages,
-    newFacts,
     status,
     turn: newTurn,
   } = await step({
@@ -515,12 +514,12 @@ async function handleUpdate(interaction: ChatInputCommandInteraction) {
     (c) => c,
   );
   if (goToNextTurn(status)) {
-    facts.push({ text: newFact });
+    factTexts.push(newFact);
   }
   const newTurnObject = await prisma.turn.create({
     data: {
       facts: {
-        create: newFacts,
+        create: factTexts.map((text) => ({ text })),
       },
       completions: {
         create: completionsArray,
@@ -529,7 +528,7 @@ async function handleUpdate(interaction: ChatInputCommandInteraction) {
       player: interaction.user.username,
       status,
       turn: newTurn,
-      proposed: userInput,
+      newFact,
     },
   });
   console.log(newTurnObject);
@@ -566,13 +565,7 @@ export const Commands = [
       .addSubcommand((subcommand) =>
         subcommand
           .setName(subcommands.update)
-          .setDescription("Choose a fact to update.")
-          .addNumberOption((option) =>
-            option
-              .setName("fact")
-              .setDescription("The fact to remove.")
-              .setRequired(true),
-          )
+          .setDescription("Choose a new set of facts.")
           .addStringOption((option) =>
             option
               .setName("new-facts")
