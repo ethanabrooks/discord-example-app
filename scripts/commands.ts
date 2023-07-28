@@ -10,9 +10,6 @@ import {
   Attachment,
   AttachmentBuilder,
   AttachmentPayload,
-  GuildMember,
-  Collection,
-  ThreadMemberManager,
   ChatInputCommandInteraction,
   ButtonStyle,
   TextChannel,
@@ -20,7 +17,7 @@ import {
 import { buttons } from "./buttons.js";
 import { Stream } from "form-data";
 import catchError from "./utils/errors.js";
-import { complete } from "./gpt.js";
+import { complete, Completion } from "./gpt.js";
 import propositions from "./propositions.js";
 import { PrismaClient } from "@prisma/client";
 
@@ -39,7 +36,7 @@ type Inferences<Type> = {
   multiStep?: Type;
 };
 type Selection = {
-  fact: string;
+  text: string;
   selected: boolean;
 };
 
@@ -135,12 +132,6 @@ const subcommands = {
   start: "start",
   update: "update",
 };
-function splitFacts(factsString: string) {
-  return factsString.split("\n").flatMap((line) => {
-    const index = line.indexOf("]");
-    return index === -1 ? [] : [line.substring(index + 1).trim()];
-  });
-}
 
 function factsToStrings(facts: string[]) {
   return facts.map((fact, index) => `${index + 1}. ${fact}`);
@@ -162,12 +153,6 @@ function inferenceToBoolean(inference: string) {
     return false;
   }
   return null;
-}
-
-function getUsernames(members: Collection<string, GuildMember>) {
-  return Array.from(members.values())
-    .filter(({ user }) => !user.bot)
-    .map(({ user }) => user.username);
 }
 
 function randomChoice<Type>(array: Type[]) {
@@ -228,18 +213,18 @@ function goToNextTurn(status: Status) {
   }
 }
 
-function getFact(input: Selection | string) {
-  return typeof input == "string" ? input : input.fact;
+function getSelectionText(input: Selection | string) {
+  return typeof input == "string" ? input : input.text;
 }
 
 function select(input: Selection | string) {
-  const fact = getFact(input);
-  return { fact, selected: true };
+  const text = getSelectionText(input);
+  return { text, selected: true };
 }
 
 function deselect(input: Selection | string) {
-  const fact = getFact(input);
-  return { fact, selected: false };
+  const text = getSelectionText(input);
+  return { text, selected: false };
 }
 
 function indicesText(selected: boolean[]) {
@@ -264,7 +249,7 @@ async function handleUpdateSubcommand({
 }): Promise<{
   messages: string[];
   selections: Selection[];
-  reasons: Inferences<string[]>;
+  completions: Inferences<Completion[]>;
   turn: number;
 }> {
   if (validFactIndex(factIndex, selections.length)) {
@@ -275,12 +260,12 @@ async function handleUpdateSubcommand({
     return {
       selections,
       messages: [text, getStatusText("try again")],
-      reasons: {},
+      completions: {},
       turn,
     };
   }
 
-  const facts = selections.map(getFact);
+  const facts = selections.map(getSelectionText);
   const [proposition] = facts;
   const userFacts = await userInputToFacts(userInput);
   const plural = userFacts.length > 1;
@@ -297,12 +282,12 @@ ${selections}`);
 
   const oldAndNew = selections
     .reduce(
-      ({ tentative, count }, { selected, fact }) => {
+      ({ tentative, count }, { selected, text }) => {
         count = count + +selected;
         if (count == factIndex) {
           selected = false; // deselect the fact corresponding to factIndex
         }
-        const selection = { fact, selected };
+        const selection = { text, selected };
         return { tentative: [...tentative, { old: true, selection }], count };
       },
       { tentative: [], count: 0 },
@@ -312,8 +297,8 @@ ${selections}`);
     ); // select all userFacts
   const tentative = oldAndNew.map(({ selection }) => selection);
   const tentativeWithItalics = oldAndNew.map(
-    ({ old, selection: { fact, selected } }) => {
-      return { fact: old ? fact : `_${fact}_`, selected };
+    ({ old, selection: { text, selected } }) => {
+      return { text: old ? text : `_${text}_`, selected };
     },
   );
 
@@ -323,19 +308,22 @@ ${selections}`);
 
   function turnResult({
     status,
-    reasons,
+    completions,
     comments,
   }: {
     status: Status;
-    reasons: Inferences<string[]>;
+    completions: Inferences<Completion[]>;
     comments: string[];
   }) {
     const verb = goToNextTurn(status)
       ? "You replaced"
       : "You failed to replace";
     const whatYouDid = `\
-${verb} fact ${factIndex}: _${replace.fact}_ 
+${verb} fact ${factIndex}: _${replace.text}_ 
 with "${userInput}"`;
+    console.log("^^^^^^^^^^^^^^^^^^^");
+    console.log(tentative);
+    console.log("^^^^^^^^^^^^^^^^^^^");
     return {
       selections: goToNextTurn(status) ? tentative : selections,
       messages: [
@@ -349,7 +337,7 @@ with "${userInput}"`;
         }),
         getStatusText(status),
       ],
-      reasons,
+      completions,
       turn: turn + +goToNextTurn(status),
     };
   }
@@ -359,10 +347,13 @@ with "${userInput}"`;
       throw new Error("Proposition is undefined");
     }
     let selectedFacts = [];
+    const completions: Completion[] = [];
     if (REMOVE_FACTS_WITH_GPT) {
       const indices = indicesText(selections.map(({ selected }) => !selected));
-      const facts: string = factsToStrings(selections.map(getFact)).join("\n");
-      const markdownString = await complete({
+      const facts: string = factsToStrings(
+        selections.map(getSelectionText),
+      ).join("\n");
+      const markdownCompletion = await complete({
         input: `Remove fact${
           indices.length == 1 ? "" : "s"
         } ${indices} from the following list:
@@ -370,18 +361,21 @@ ${facts}
 Ensure that the remaining facts still make sense.`,
         model: gpt.three,
       });
+      completions.push(markdownCompletion);
       const markdownListRegex = /^(\d+\.\s.+)$/gm;
       let match;
 
-      while ((match = markdownListRegex.exec(markdownString)) !== null) {
+      while (
+        (match = markdownListRegex.exec(markdownCompletion.output)) !== null
+      ) {
         selectedFacts.push(match[1]);
       }
       if (selectedFacts.length == 0) {
-        selectedFacts.push(markdownString);
+        selectedFacts.push(markdownCompletion.output);
       }
     } else {
       selectedFacts = factsToStrings(
-        selections.filter(({ selected }) => selected).map(({ fact }) => fact),
+        selections.filter(({ selected }) => selected).map(({ text }) => text),
       );
     }
     console.log(selections);
@@ -394,19 +388,22 @@ ${
   selectedFacts.length == 1 ? "Does this fact" : "Do these facts"
 } imply _${proposition}_? Think through it step by step. When you are done, finish with the text: "${concludingText}"`;
     const completion = await complete({ input, model: gpt.four });
-    let [explanation, inference] = completion.split(
+    completions.push(completion);
+    let [explanation, inference] = completion.output.split(
       "In conclusion, the proposition",
     );
     if (inference == undefined) {
-      inference = await complete({
+      const inferenceCompletion = await complete({
         input: `${input}
 ${explanation}
 
 ${concludingText}`,
         model: gpt.four,
       });
+      completions.push(inferenceCompletion);
+      inference = inferenceCompletion.output;
     }
-    return { explanation, inference };
+    return { inference, completions };
   }
 
   async function getInferenceResult({
@@ -416,28 +413,19 @@ ${concludingText}`,
     selections: Selection[];
     proposition: string;
   }) {
-    const { explanation, inference } = await infer(selections, proposition);
-    const paragraphs = [
-      getInferenceSetupText({
-        factStatus: "initial",
-        proposition,
-        selections,
-        showAll: false,
-      }),
-      getInferenceText({ explanation, inference }),
-    ];
+    const { completions, inference } = await infer(selections, proposition);
     const success = inferenceToBoolean(inference);
-    return { paragraphs, success };
+    return { completions, success };
   }
 
   const oneStep = await getInferenceResult({
     selections: tentative,
-    proposition: replace.fact,
+    proposition: replace.text,
   });
   if (!oneStep.success) {
     return turnResult({
       status: "try again",
-      reasons: { oneStep: oneStep.paragraphs },
+      completions: { oneStep: oneStep.completions },
       comments: [
         ...commentsIntro,
         "The new facts did not imply the replaced fact.",
@@ -448,7 +436,7 @@ ${concludingText}`,
   if (turn == 0) {
     return turnResult({
       status: "continue",
-      reasons: { oneStep: oneStep.paragraphs },
+      completions: { oneStep: oneStep.completions },
       comments: [
         ...commentsIntro,
         `The new fact${plural ? "s imply" : " implies"} _${proposition}_`,
@@ -457,13 +445,13 @@ ${concludingText}`,
     });
   }
   const oneStepComment = `The new fact${plural ? "s imply" : " implies"} _${
-    replace.fact
+    replace.text
   }_`;
   const [head, ...tail]: Selection[] = [
     ...selections.map(select),
     ...userFacts.map(select),
   ];
-  let coherenceParagraphs = null;
+  let coherenceCompletions = null;
   if (COHERENCE_VALIDATION) {
     const coherence = await getInferenceResult({
       selections: [deselect(head), ...tail],
@@ -472,9 +460,9 @@ ${concludingText}`,
     if (!coherence.success) {
       return turnResult({
         status: "try again",
-        reasons: {
-          oneStep: oneStep.paragraphs,
-          coherence: coherence.paragraphs,
+        completions: {
+          oneStep: oneStep.completions,
+          coherence: coherence.completions,
         },
         comments: [
           ...commentsIntro,
@@ -482,7 +470,7 @@ ${concludingText}`,
         ],
       });
     }
-    coherenceParagraphs = coherence.paragraphs;
+    coherenceCompletions = coherence.completions;
   }
   const multiStep = await getInferenceResult({
     selections: tentative,
@@ -491,10 +479,10 @@ ${concludingText}`,
   const status = multiStep.success ? "continue" : "win";
   return turnResult({
     status,
-    reasons: {
-      oneStep: oneStep.paragraphs,
-      coherence: coherenceParagraphs,
-      multiStep: multiStep.paragraphs,
+    completions: {
+      oneStep: oneStep.completions,
+      coherence: coherenceCompletions,
+      multiStep: multiStep.completions,
     },
     comments: [
       ...commentsIntro,
@@ -540,7 +528,7 @@ function getInferenceSetupText({
   const factStrings = factsToStrings(
     selections
       .filter(({ selected }) => selected)
-      .map(({ fact: proposition, selected }): string =>
+      .map(({ text: proposition, selected }): string =>
         selected && showAll ? bold(proposition) : proposition,
       ),
   );
@@ -594,13 +582,22 @@ function chunkString(input: string, chunkSize: number): string[] {
 
 async function handleThreads(
   channel: TextChannel,
-  reasons: Inferences<string[]>,
+  completions: Inferences<Completion[]>,
 ) {
-  return await Object.entries(reasons)
-    .filter(([, texts]) => texts != null)
-    .map(([key, texts]) => ({
+  return await Object.entries(completions)
+    .filter(([, completions]: [string, Completion[]]) => completions != null)
+    .map(([key, completions]: [string, Completion[]]) => ({
       name: threadNames[key],
-      text: texts.join("\n"),
+      text: completions
+        .map(
+          ({ input, output }) => `
+# Input
+${input}
+# Output
+${output}
+`,
+        )
+        .join("\n"),
     }))
     .forEach(async ({ name, text }) => {
       const thread = await channel.threads.create({
@@ -618,81 +615,89 @@ async function handleStart(interaction: ChatInputCommandInteraction) {
   let proposition = interaction.options.getString("proposition");
   if (proposition == undefined) {
     const positiveFact = `${randomChoice(propositions)}.`;
-    proposition = truth ? positiveFact : await negate(positiveFact);
+    proposition = truth ? positiveFact : (await negate(positiveFact)).output;
   }
-  const newSelections = [{ fact: proposition, selected: true }];
+  const newSelection = { text: proposition, selected: true };
+
+  const game = await prisma.game.create({
+    data: {
+      channel: interaction.channelId,
+      proposition,
+      turns: {
+        create: {
+          facts: { create: newSelection },
+          player: interaction.user.username,
+          won: false,
+          turn: 0,
+        },
+      },
+    },
+  });
+  console.log(game);
 
   await handleInteraction({
     interaction,
     message: getInferenceSetupText({
       factStatus: "initial",
       proposition,
-      selections: newSelections,
+      selections: [newSelection],
       showAll: false,
     }),
-  });
-  await prisma.game.create({
-    data: {
-      channelId: interaction.channelId,
-      proposition,
-      turns: {
-        create: {
-          facts: { create: { text: proposition, selected: true } },
-          player: interaction.user.username,
-          won: false,
-          count: 0,
-        },
-      },
-    },
   });
 }
 
 async function handleUpdate(interaction: ChatInputCommandInteraction) {
   const { factIndex, userInput } = getOptions(interaction);
 
-  const { facts, count, game } = await prisma.turn.findFirst({
+  const turnObject = await prisma.turn.findFirst({
     include: { game: true, facts: true },
-    where: { game: { channelId: interaction.channelId } },
+    where: { game: { channel: interaction.channelId } },
     orderBy: { id: "desc" },
   });
+  console.log("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
+  console.log(turnObject);
+  console.log("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
+  const { facts, turn, game } = turnObject;
+
   const inputSelections = facts.map(
-    ({ text, selected }): Selection => ({
-      fact: text,
-      selected,
-    }),
+    ({ text, selected }): Selection => ({ text, selected }),
   );
 
   const {
     messages,
     selections,
-    reasons: threads,
-    turn,
+    completions,
+    turn: newTurn,
   } = await handleUpdateSubcommand({
     factIndex,
     selections: inputSelections,
-    turn: count,
+    turn,
     userInput,
   });
-  const message = messages.join("\n");
-
-  await prisma.turn.create({
+  const newFacts = selections.map(({ text, selected }) => ({
+    text,
+    selected,
+  }));
+  console.log("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
+  console.log(newFacts);
+  console.log("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
+  const newTurnObject = await prisma.turn.create({
     data: {
       facts: {
-        create: selections.map(({ fact, selected }) => ({
-          text: fact,
-          selected,
-        })),
+        create: newFacts,
       },
       gameId: game.id,
       player: interaction.user.username,
       won: false, // TODO
-      count: turn,
+      turn: newTurn,
       proposed: userInput,
     },
   });
+  console.log(newTurnObject);
+  const message = messages.join("\n");
 
   if (interaction.channel instanceof TextChannel) {
-    await handleThreads(interaction.channel, threads);
+    await handleThreads(interaction.channel, completions);
   }
 
   return await handleInteraction({ interaction, message });

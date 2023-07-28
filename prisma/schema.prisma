@@ -26,18 +26,12 @@ model Turn {
   player   String
   proposed String?
   won      Boolean
-  count    Int
+  turn     Int
 }
 
 model Game {
-  id          Int     @id @default(autoincrement())
+  id          Int    @id @default(autoincrement())
   turns       Turn[]
-  channel     Channel @relation(fields: [channelId], references: [id])
-  channelId   String
+  channel     String
   proposition String
-}
-
-model Channel {
-  id    String @id
-  games Game[]
 }

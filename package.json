@@ -9,7 +9,8 @@
   },
   "scripts": {
     "build": "tsc --build",
-    "clean": "tsc --build --clean",
+    "clean-ts": "tsc --build --clean",
+    "clean-prisma": "mv prisma/schema.prisma /tmp && rm -rf prisma/ && prisma init && mv /tmp/schema.prisma prisma/",
     "dev": "nodemon --exec \"tsc --build && node dist/app.js\"",
     "migrate": "prisma migrate dev --name init",
     "register": "node dist/commands.js",

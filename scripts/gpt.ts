@@ -13,6 +13,11 @@ import catchError from "./utils/errors.js";
 const MODEL = "gpt-3.5-turbo-0301";
 export const DEBUG = false;
 
+export type Completion = {
+  input: string;
+  output: string;
+};
+
 type IndexedMessage = {
   role: ChatCompletionRequestMessageRoleEnum;
   content: string | undefined;
@@ -332,7 +337,7 @@ export async function createChatCompletionWithBackoff({
   delay?: number;
   model?: string;
   logger?: Logger | null;
-}): Promise<string | undefined> {
+}): Promise<Completion | undefined> {
   const length = messagesLength(messages);
   const indexedMessages = messages.map(
     (message, index): IndexedMessage => ({
@@ -359,6 +364,7 @@ export async function createChatCompletionWithBackoff({
   if (logger != null) {
     logger.debug({ inputMessages });
   }
+  const input = messages.map(({ content }) => content).join("");
   const content: string | undefined = DEBUG
     ? text
     : await openai
@@ -382,18 +388,25 @@ export async function createChatCompletionWithBackoff({
           await new Promise((resolve) => setTimeout(resolve, delay));
 
           // Retry the operation, with a longer delay
-          return createChatCompletionWithBackoff({
+          const retry = await createChatCompletionWithBackoff({
             messages,
             stopWord,
             delay: delay * 2,
             model,
             logger,
           });
+          return retry.output;
         });
   if (content == null) {
-    return `GPT-3 returned no content in reponse to ${numCharacters} characters of input.`;
+    return {
+      input,
+      output: `GPT-3 returned no content in reponse to ${numCharacters} characters of input.`,
+    };
   } else if (content.length == 0) {
-    return `GPT-3 returned empty content in reponse to ${numCharacters} characters of input.`;
+    return {
+      input,
+      output: `GPT-3 returned empty content in reponse to ${numCharacters} characters of input.`,
+    };
   }
   console.log("completion");
   console.log(content);
@@ -403,5 +416,5 @@ export async function createChatCompletionWithBackoff({
       completion: content,
     });
   }
-  return content;
+  return { output: content, input };
 }
