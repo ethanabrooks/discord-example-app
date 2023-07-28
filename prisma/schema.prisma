@@ -10,6 +10,14 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Completion {
+  id     Int    @id @default(autoincrement())
+  turn   Turn   @relation(fields: [turnId], references: [id])
+  turnId Int
+  input  String
+  output String
+}
+
 model Fact {
   id       Int     @id @default(autoincrement())
   turn     Turn    @relation(fields: [turnId], references: [id])
@@ -19,14 +27,15 @@ model Fact {
 }
 
 model Turn {
-  id       Int     @id @default(autoincrement())
-  game     Game    @relation(fields: [gameId], references: [id])
-  gameId   Int
-  facts    Fact[]
-  player   String
-  proposed String?
-  won      Boolean
-  turn     Int
+  id          Int          @id @default(autoincrement())
+  game        Game         @relation(fields: [gameId], references: [id])
+  gameId      Int
+  facts       Fact[]
+  player      String
+  proposed    String?
+  won         Boolean
+  turn        Int
+  completions Completion[]
 }
 
 model Game {

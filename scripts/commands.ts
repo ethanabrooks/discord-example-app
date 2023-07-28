@@ -321,9 +321,6 @@ ${selections}`);
     const whatYouDid = `\
 ${verb} fact ${factIndex}: _${replace.text}_ 
 with "${userInput}"`;
-    console.log("^^^^^^^^^^^^^^^^^^^");
-    console.log(tentative);
-    console.log("^^^^^^^^^^^^^^^^^^^");
     return {
       selections: goToNextTurn(status) ? tentative : selections,
       messages: [
@@ -378,7 +375,6 @@ Ensure that the remaining facts still make sense.`,
         selections.filter(({ selected }) => selected).map(({ text }) => text),
       );
     }
-    console.log(selections);
     const concludingText = `In conclusion, the proposition _${proposition}_ is probably [true|false|indeterminate]`;
     const input = `Consider the following fact${
       selectedFacts.length == 1 ? "" : "s"
@@ -654,9 +650,7 @@ async function handleUpdate(interaction: ChatInputCommandInteraction) {
     where: { game: { channel: interaction.channelId } },
     orderBy: { id: "desc" },
   });
-  console.log("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
   console.log(turnObject);
-  console.log("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
   const { facts, turn, game } = turnObject;
 
   const inputSelections = facts.map(
@@ -678,13 +672,16 @@ async function handleUpdate(interaction: ChatInputCommandInteraction) {
     text,
     selected,
   }));
-  console.log("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
-  console.log(newFacts);
-  console.log("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
+  const completionsArray: Completion[] = Object.values(completions).flatMap(
+    (c) => c,
+  );
   const newTurnObject = await prisma.turn.create({
     data: {
       facts: {
         create: newFacts,
+      },
+      completions: {
+        create: completionsArray,
       },
       gameId: game.id,
       player: interaction.user.username,
@@ -694,6 +691,11 @@ async function handleUpdate(interaction: ChatInputCommandInteraction) {
     },
   });
   console.log(newTurnObject);
+  const completionsObjects = await prisma.completion.findMany({
+    where: { turnId: turnObject.id },
+    orderBy: { id: "desc" },
+  });
+  console.log(completionsObjects);
   const message = messages.join("\n");
 
   if (interaction.channel instanceof TextChannel) {
