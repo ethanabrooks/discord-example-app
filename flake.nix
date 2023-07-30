@@ -29,6 +29,7 @@
           libuuid
           openssl_1_1
           jq
+          patchelf
         ];
         OPENSSL_PATH = "${builtins.toString pkgs.openssl_1_1.out}/lib/";
         PYTHONBREAKPOINT = "ipdb.set_trace";
