@@ -19,9 +19,10 @@ CREATE TABLE "Fact" (
 CREATE TABLE "Turn" (
     "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "gameId" INTEGER NOT NULL,
-    "player" TEXT NOT NULL,
     "newFact" TEXT,
+    "player" TEXT NOT NULL,
     "status" TEXT NOT NULL,
+    "svg" TEXT,
     "turn" INTEGER NOT NULL,
     CONSTRAINT "Turn_gameId_fkey" FOREIGN KEY ("gameId") REFERENCES "Game" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
@@ -31,5 +32,6 @@ CREATE TABLE "Game" (
     "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "channel" TEXT NOT NULL,
     "coherenceCheck" BOOLEAN NOT NULL,
+    "figmaUrl" TEXT,
     "proposition" TEXT NOT NULL
 );

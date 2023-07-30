@@ -20,6 +20,7 @@ import catchError from "./utils/errors.js";
 import { complete, Completion } from "./gpt.js";
 import propositions from "./propositions.js";
 import { PrismaClient } from "@prisma/client";
+import { getSvgUrl } from "./figma.js";
 
 export const prisma = new PrismaClient();
 
@@ -32,10 +33,6 @@ type Inferences<Type> = {
   oneStep?: Type;
   coherence?: Type;
   multiStep?: Type;
-};
-type Selection = {
-  text: string;
-  selected: boolean;
 };
 
 const threadNames: Inferences<string> = {
@@ -128,6 +125,7 @@ const gpt = {
 };
 const subcommands = {
   add: "add",
+  figmaToken: "figma-token",
   replace: "replace",
   start: "start",
   update: "update",
@@ -193,7 +191,7 @@ function goToNextTurn(status: Status) {
 
 async function infer(premise: string, conclusion: string) {
   const completions: Completion[] = [];
-  const concludingText = `In conclusion, the proposition _${conclusion}_ is probably [true|false|indeterminate]`;
+  const concludingText = `In conclusion, the proposition is probably [true|false|indeterminate]`;
   const input = `Consider the following facts: _${premise}_
 Do these facts imply _${conclusion}_? Think through it step by step. When you are done, finish with the text: "${concludingText}"`;
   const completion = await complete({ input, model: gpt.four });
@@ -388,18 +386,6 @@ ${fact}
 ${headerPrefix} Target Proposition
 _${proposition}_`;
 }
-function getInferenceText({
-  explanation,
-  inference,
-}: {
-  explanation: string;
-  inference: string;
-}) {
-  return `\
-Inference: ${bold(inference)}
-${headerPrefix} Explanation
-${explanation}`;
-}
 
 function throwIfUndefined<T>(value: T | undefined, name: string) {
   if (value == undefined) {
@@ -410,19 +396,26 @@ function throwIfUndefined<T>(value: T | undefined, name: string) {
   }
 }
 
+function getFigmaTokenOptions(interaction: ChatInputCommandInteraction) {
+  let token = interaction.options.getString("token");
+  throwIfUndefined(token, "token");
+  return { token };
+}
+
 function getStartOptions(interaction: ChatInputCommandInteraction) {
   let proposition = interaction.options.getString("proposition");
+  const figmaUrl = interaction.options.getString("figma-url");
   let coherenceCheck = interaction.options.getBoolean("coherence-check");
   if (coherenceCheck == undefined) {
     coherenceCheck = false;
   }
-  return { proposition, coherenceCheck };
+  return { proposition, figmaUrl, coherenceCheck };
 }
 
 function getUpdateOptions(interaction: ChatInputCommandInteraction) {
   const newFact = interaction.options.getString("new-facts");
-  throwIfUndefined(newFact, "new-fact");
-  return { newFact };
+  const figmaUrl = interaction.options.getString("figma-url");
+  return { newFact, figmaUrl };
 }
 
 function getReplaceOptions(interaction: ChatInputCommandInteraction) {
@@ -472,12 +465,25 @@ ${output}
     });
 }
 
-async function handleStart(interaction: ChatInputCommandInteraction) {
-  let { proposition, coherenceCheck } = getStartOptions(interaction);
+async function handleStart(
+  interaction: ChatInputCommandInteraction,
+  tokens: { [username: string]: string },
+) {
+  let { proposition, figmaUrl, coherenceCheck } = getStartOptions(interaction);
   const truth = randomBoolean();
   if (proposition == undefined) {
     const positiveFact = `${randomChoice(propositions)}.`;
     proposition = truth ? positiveFact : (await negate(positiveFact)).output;
+  }
+  const figmaResult = await handleFigma({
+    figmaUrl,
+    tokens,
+    interaction,
+    fact: proposition,
+  });
+  let svg = null;
+  if (figmaResult != undefined) {
+    ({ fact: proposition, svg } = figmaResult);
   }
 
   const game = await prisma.game.create({
@@ -488,7 +494,9 @@ async function handleStart(interaction: ChatInputCommandInteraction) {
       turns: {
         create: {
           facts: { create: { text: proposition } },
+          figmaUrl,
           player: interaction.user.username,
+          svg,
           status: "initial",
           turn: 0,
         },
@@ -507,15 +515,66 @@ async function handleStart(interaction: ChatInputCommandInteraction) {
   });
 }
 
-async function handleOther(interaction: ChatInputCommandInteraction) {
-  let { newFact } = getUpdateOptions(interaction);
+async function handleFigma({
+  figmaUrl,
+  tokens,
+  interaction,
+  fact,
+}: {
+  figmaUrl: string;
+  tokens: { [username: string]: string };
+  interaction: ChatInputCommandInteraction;
+  fact: string;
+}) {
+  const token = tokens[interaction.user.username];
+
+  if (token == undefined) {
+    await handleInteraction({
+      interaction,
+      message: `You need to authenticate figma first. Run \`/play figma-token\``,
+    });
+    return;
+  }
+  const svgUrl = await getSvgUrl(figmaUrl, token);
+  const svg = await fetch(svgUrl)
+    .then((response) => {
+      return response.text();
+    }) // Get the response as text
+    .catch((err) => {
+      catchError(err);
+      return null;
+    });
+  const [pre, code, post] = fact.split(/```svg\s|\s```/);
+
+  if (svg != null) {
+    fact =
+      code == undefined
+        ? `\
+\`\`\`svg
+${svg}
+\`\`\`
+${pre}`
+        : `\
+${pre}\`\`\`svg
+${svg}
+\`\`\`
+${post}`;
+  }
+  return { fact, svg };
+}
+
+async function handleOther(
+  interaction: ChatInputCommandInteraction,
+  tokens: { [username: string]: string },
+) {
+  let { newFact, figmaUrl } = getUpdateOptions(interaction);
 
   const turnObject = await prisma.turn.findFirst({
     include: { game: true, facts: true },
     where: { game: { channel: interaction.channelId } },
     orderBy: { id: "desc" },
   });
-  const { facts, turn, game } = turnObject;
+  const { facts, figmaUrl: prevFigmaUrl, turn, game } = turnObject;
   const factTexts = facts.map(({ text }) => text);
   const currentFact = factTexts[factTexts.length - 1];
   const oldFacts = factTexts.slice(0, factTexts.length - 1);
@@ -525,12 +584,33 @@ async function handleOther(interaction: ChatInputCommandInteraction) {
     case "add":
       newFact = `${currentFact} ${newFact}`;
       break;
+    case "update":
+      newFact = newFact == undefined ? currentFact : newFact;
+      break;
     case "replace":
       const { replace } = getReplaceOptions(interaction);
       newFact = currentFact.replace(replace, newFact);
       break;
     default:
       break;
+  }
+  let svg = null;
+  if (figmaUrl == undefined) {
+    figmaUrl = prevFigmaUrl;
+  }
+  console.log("#############3 figma url");
+  console.log(figmaUrl);
+
+  if (figmaUrl != undefined) {
+    const figmaResult = await handleFigma({
+      figmaUrl,
+      tokens,
+      interaction,
+      fact: newFact,
+    });
+    if (figmaResult != undefined) {
+      ({ fact: newFact, svg } = figmaResult);
+    }
   }
 
   const {
@@ -548,7 +628,7 @@ async function handleOther(interaction: ChatInputCommandInteraction) {
   });
 
   const completionsArray: Completion[] = Object.values(completions).flatMap(
-    (c) => c,
+    (c) => (c == null ? [] : c),
   );
   if (goToNextTurn(status)) {
     factTexts.push(newFact);
@@ -561,9 +641,11 @@ async function handleOther(interaction: ChatInputCommandInteraction) {
       completions: {
         create: completionsArray,
       },
+      figmaUrl,
       gameId: game.id,
       player: interaction.user.username,
       status,
+      svg,
       turn: newTurn,
       newFact,
     },
@@ -590,12 +672,29 @@ export const Commands = [
       .setDescription(`Play break the chain`)
       .addSubcommand((subcommand) =>
         subcommand
+          .setName(subcommands.figmaToken)
+          .setDescription("Authenticate figma.")
+          .addStringOption((option) =>
+            option
+              .setName("token")
+              .setDescription("Your figma dev token.")
+              .setRequired(true),
+          ),
+      )
+      .addSubcommand((subcommand) =>
+        subcommand
           .setName(subcommands.start)
           .setDescription("Start a new game.")
           .addStringOption((option) =>
             option
               .setName("proposition")
               .setDescription("The target proposition that GPT tries to prove.")
+              .setRequired(false),
+          )
+          .addStringOption((option) =>
+            option
+              .setName("figma-url")
+              .setDescription("The new facts to replace the old ones with.")
               .setRequired(false),
           )
           .addBooleanOption((option) =>
@@ -614,6 +713,12 @@ export const Commands = [
               .setName("new-facts")
               .setDescription("The new facts to add")
               .setRequired(true),
+          )
+          .addStringOption((option) =>
+            option
+              .setName("figma-url")
+              .setDescription("The new facts to replace the old ones with.")
+              .setRequired(false),
           ),
       )
       .addSubcommand((subcommand) =>
@@ -624,7 +729,13 @@ export const Commands = [
             option
               .setName("new-facts")
               .setDescription("The new facts to replace the old ones with.")
-              .setRequired(true),
+              .setRequired(false),
+          )
+          .addStringOption((option) =>
+            option
+              .setName("figma-url")
+              .setDescription("The new facts to replace the old ones with.")
+              .setRequired(false),
           ),
       )
       .addSubcommand((subcommand) =>
@@ -646,15 +757,23 @@ export const Commands = [
               .setRequired(true),
           ),
       ),
+    tokens: {
+      [process.env.DISCORD_USERNAME]: process.env.FIGMA_TOKEN,
+    },
     async execute(interaction: ChatInputCommandInteraction) {
-      await interaction.deferReply();
       const subcommand = interaction.options.getSubcommand();
+      await interaction.deferReply();
       switch (subcommand) {
         case subcommands.start:
-          await handleStart(interaction);
+          await handleStart(interaction, this.tokens);
+          break;
+        case subcommands.figmaToken:
+          const { token } = getFigmaTokenOptions(interaction);
+          this.tokens[interaction.user.username] = token;
+          handleInteraction({ interaction, message: "Saved figma token." });
           break;
         default:
-          await handleOther(interaction);
+          await handleOther(interaction, this.tokens);
           break;
       }
     },

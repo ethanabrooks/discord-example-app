@@ -30,9 +30,11 @@ model Turn {
   game        Game         @relation(fields: [gameId], references: [id])
   gameId      Int
   facts       Fact[]
-  player      String
+  figmaUrl    String?
   newFact     String?
+  player      String
   status      String
+  svg         String?
   turn        Int
   completions Completion[]
 }
