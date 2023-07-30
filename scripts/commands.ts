@@ -13,6 +13,9 @@ import {
   ChatInputCommandInteraction,
   ButtonStyle,
   TextChannel,
+  EmbedBuilder,
+  EmbedData,
+  APIEmbed,
 } from "discord.js";
 import { buttons } from "./buttons.js";
 import { Stream } from "form-data";
@@ -52,10 +55,12 @@ function splitAtResponseLimit(text: string) {
 
 async function handleInteraction({
   interaction,
+  embeds = [],
   firstReply = true,
   files = [],
   message,
 }: {
+  embeds?: (APIEmbed | JSONEncodable<APIEmbed>)[];
   firstReply?: boolean;
   files?: (
     | BufferResolvable
@@ -78,7 +83,7 @@ async function handleInteraction({
       ? []
       : [new ActionRowBuilder<ButtonBuilder>().addComponents(button)];
 
-  const reply = { content, components, files };
+  const reply = { content, components, embeds, files };
   const channel = interaction.channel;
   // Update reply
   await (firstReply ? interaction.followUp(reply) : channel.send(reply)).then(
