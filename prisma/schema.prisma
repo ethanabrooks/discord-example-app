@@ -10,6 +10,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model FigmaData {
+  id             Int    @id @default(autoincrement())
+  fileId         String
+  username       String
+  encryptedToken String // this is the encrypted token content
+  tokenIV        String // this is the initialization vector (IV) for the token
+}
+
+model SvgData {
+  id          Int     @id @default(autoincrement())
+  description String?
+  svg         String
+  Turn        Turn[]
+}
+
 model Completion {
   id     Int    @id @default(autoincrement())
   turn   Turn   @relation(fields: [turnId], references: [id])
@@ -27,16 +42,16 @@ model Fact {
 
 model Turn {
   id          Int          @id @default(autoincrement())
+  completions Completion[]
+  facts       Fact[]
   game        Game         @relation(fields: [gameId], references: [id])
   gameId      Int
-  facts       Fact[]
-  figmaUrl    String?
   newFact     String?
   player      String
   status      String
-  svg         String?
+  svgData     SvgData      @relation(fields: [svgDataId], references: [id])
+  svgDataId   Int
   turn        Int
-  completions Completion[]
 }
 
 model Game {

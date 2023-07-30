@@ -22,9 +22,9 @@ import { Stream } from "form-data";
 import catchError from "./utils/errors.js";
 import { complete, Completion } from "./gpt.js";
 import propositions from "./propositions.js";
-import { PrismaClient } from "@prisma/client";
+import { FigmaData, PrismaClient } from "@prisma/client";
 import { getSvgUrl } from "./figma.js";
-
+import { decrypt } from "./utils/encryption.js";
 export const prisma = new PrismaClient();
 
 const BUILT_IN_RESPONSE_LIMIT = 2000;
@@ -129,9 +129,9 @@ const gpt = {
   four: "gpt-4",
 };
 const subcommands = {
-  add: "add",
-  figmaToken: "figma-token",
-  replace: "replace",
+  // add: "add",
+  figma: "figma",
+  // replace: "replace",
   start: "start",
   update: "update",
 };
@@ -401,35 +401,40 @@ function throwIfUndefined<T>(value: T | undefined, name: string) {
   }
 }
 
-function getFigmaTokenOptions(interaction: ChatInputCommandInteraction) {
+async function getFigmaOptions(interaction: ChatInputCommandInteraction) {
   let token = interaction.options.getString("token");
-  throwIfUndefined(token, "token");
-  return { token };
+  let url = interaction.options.getString("url");
+  let description = interaction.options.getString("description");
+  return { token, url, description };
 }
 
 function getStartOptions(interaction: ChatInputCommandInteraction) {
   let proposition = interaction.options.getString("proposition");
-  const figmaUrl = interaction.options.getString("figma-url");
+  let figmaDescription = interaction.options.getString("figma-description");
+  let useFigma = interaction.options.getBoolean("use-figma");
+  if (useFigma == undefined) {
+    useFigma = false;
+  }
   let coherenceCheck = interaction.options.getBoolean("coherence-check");
   if (coherenceCheck == undefined) {
     coherenceCheck = false;
   }
-  return { proposition, figmaUrl, coherenceCheck };
+  return { proposition, coherenceCheck, useFigma, figmaDescription };
 }
 
 function getUpdateOptions(interaction: ChatInputCommandInteraction) {
   const newFact = interaction.options.getString("new-facts");
-  const figmaUrl = interaction.options.getString("figma-url");
-  return { newFact, figmaUrl };
+  const figmaDescription = interaction.options.getBoolean("figma-description");
+  return { newFact, figmaDescription };
 }
 
-function getReplaceOptions(interaction: ChatInputCommandInteraction) {
-  const replace = interaction.options.getString("replace");
-  const newFact = interaction.options.getString("new-facts");
-  throwIfUndefined(newFact, "replace");
-  throwIfUndefined(newFact, "new-fact");
-  return { newFact, replace };
-}
+// function getReplaceOptions(interaction: ChatInputCommandInteraction) {
+//   const replace = interaction.options.getString("replace");
+//   const newFact = interaction.options.getString("new-facts");
+//   throwIfUndefined(newFact, "replace");
+//   throwIfUndefined(newFact, "new-fact");
+//   return { newFact, replace };
+// }
 
 function chunkString(input: string, chunkSize: number): string[] {
   return input.length == 0
@@ -470,34 +475,55 @@ ${output}
     });
 }
 
-async function handleStart(
-  interaction: ChatInputCommandInteraction,
-  tokens: { [username: string]: string },
-) {
-  let { proposition, figmaUrl, coherenceCheck } = getStartOptions(interaction);
+async function getLastFigmaData(interaction: ChatInputCommandInteraction) {
+  return await prisma.figmaData.findFirst({
+    where: { username: interaction.user.username },
+    orderBy: { id: "desc" },
+  });
+}
+
+async function getSvg(figmaData: FigmaData) {
+  // Decrypt the token from the retrieved figmaData
+  const { fileId, encryptedToken, tokenIV } = figmaData;
+  const token = decrypt({ iv: tokenIV, content: encryptedToken });
+
+  // Get the svg url with the file ID and decrypted token
+  const svgUrl = await getSvgUrl(fileId, token);
+  return fetch(svgUrl)
+    .then((response) => response.text())
+    .catch(catchError);
+}
+
+async function handleStart(interaction: ChatInputCommandInteraction) {
+  let { proposition, coherenceCheck, useFigma } = getStartOptions(interaction);
   const truth = randomBoolean();
   if (proposition == undefined) {
     const positiveFact = `${randomChoice(propositions)}.`;
     proposition = truth ? positiveFact : (await negate(positiveFact)).output;
   }
-  const turnObject = await prisma.turn.findFirst({
-    where: { game: { channel: interaction.channelId } },
-    orderBy: { id: "desc" },
-  });
-  if (turnObject != undefined) {
-    figmaUrl = turnObject.figmaUrl;
-  }
-  const figmaResult = await handleFigma({
-    figmaUrl,
-    tokens,
-    interaction,
-    fact: proposition,
-  });
-  let svg = null;
-  if (figmaResult != undefined) {
-    ({ fact: proposition, svg } = figmaResult);
-  }
 
+  let svgData = null;
+  if (useFigma) {
+    const figmaData = await getLastFigmaData(interaction);
+    if (figmaData == null) {
+      return await handleInteraction({
+        interaction,
+        message: `You need to submit figma data. Run \`/figma\``,
+      });
+    }
+    const svg = getSvg(figmaData);
+    // Retrieve the description from the most recent turn data
+    const turnData = await prisma.turn.findFirst({
+      include: { svgData: true },
+      where: { game: { channel: interaction.channelId } },
+      orderBy: { id: "desc" },
+    });
+
+    // If a turnData was found and it has svgData with a description, use it
+    // Otherwise, default to an empty string
+    const description = turnData?.svgData?.description;
+    svgData = { svg, description };
+  }
   const game = await prisma.game.create({
     data: {
       channel: interaction.channelId,
@@ -506,10 +532,9 @@ async function handleStart(
       turns: {
         create: {
           facts: { create: { text: proposition } },
-          figmaUrl,
           player: interaction.user.username,
-          svg,
           status: "initial",
+          svgData,
           turn: 0,
         },
       },
@@ -527,139 +552,135 @@ async function handleStart(
   });
 }
 
-async function handleFigma({
-  figmaUrl,
-  tokens,
-  interaction,
-  fact,
-}: {
-  figmaUrl: string;
-  tokens: { [username: string]: string };
-  interaction: ChatInputCommandInteraction;
-  fact: string;
-}) {
-  const token = tokens[interaction.user.username];
+// function updateFactWithSvg(fact: string, svg: string) {
+//   const [pre, code, post] = fact.split(/```svg\s|\s```/);
 
-  if (token == undefined) {
-    await handleInteraction({
-      interaction,
-      message: `You need to authenticate figma first. Run \`/play figma-token\``,
-    });
-    return;
-  }
-  const svgUrl = await getSvgUrl(figmaUrl, token);
-  const svg = await fetch(svgUrl)
-    .then((response) => {
-      return response.text();
-    }) // Get the response as text
-    .catch((err) => {
-      catchError(err);
-      return null;
-    });
-  const [pre, code, post] = fact.split(/```svg\s|\s```/);
+//   if (svg != null) {
+//     const noCodeInFact = `\
+// \`\`\`svg
+// ${svg}
+// \`\`\`
+// ${pre}`;
+//     const codeInFact = `\
+// ${pre}\`\`\`svg
+// ${svg}
+// \`\`\`
+// ${post}`;
 
-  if (svg != null) {
-    fact =
-      code == undefined
-        ? `\
-\`\`\`svg
-${svg}
-\`\`\`
-${pre}`
-        : `\
-${pre}\`\`\`svg
-${svg}
-\`\`\`
-${post}`;
-  }
-  return { fact, svg };
-}
+//     fact = code == undefined ? noCodeInFact : codeInFact;
+//   }
+//   return fact;
+// }
 
-async function handleOther(
-  interaction: ChatInputCommandInteraction,
-  tokens: { [username: string]: string },
-) {
-  let { newFact, figmaUrl } = getUpdateOptions(interaction);
+// async function handleFigma(interaction: ChatInputCommandInteraction) {
+//   const username = interaction.user.username;
+//   const oldFigmaData = await prisma.figmaData.findFirst({
+//     where: { username },
+//   });
+
+//   const { token, url, description } = await getFigmaOptions(interaction);
+
+//   const newToken = token ?? oldToken;
+
+//   const urlBase = "https://www.figma.com/file/";
+//   let fileId: string;
+//   if (url != undefined) {
+//     if (url.startsWith(urlBase)) {
+//       fileId = url.split("/")[4];
+//     } else {
+//       return await handleInteraction({
+//         interaction,
+//         message: `The url ${url} is invalid. It should be of the form ${urlBase}<fileId>/...`,
+//       });
+//     }
+//   }
+//   const newFileId = fileId ?? oldFigmaData?.fileId;
+
+//   if (newToken === undefined) {
+//     handleInteraction({
+//       interaction,
+//       message: "You need to enter a Figma token.",
+//     });
+//     return; // early return in case token is undefined
+//   }
+
+//   if (newFileId === undefined) {
+//     handleInteraction({
+//       interaction,
+//       message: "You need to enter a Figma url.",
+//     });
+//     return; // early return in case url is undefined
+//   }
+
+//   handleInteraction({ interaction, message: "Saved figma token." });
+// }
+
+async function handleUpdate(interaction: ChatInputCommandInteraction) {
+  let { newFact } = getUpdateOptions(interaction);
 
   const turnObject = await prisma.turn.findFirst({
-    include: { game: true, facts: true },
+    include: { game: true, facts: true, svgData: true },
     where: { game: { channel: interaction.channelId } },
     orderBy: { id: "desc" },
   });
-  const { facts, figmaUrl: prevFigmaUrl, turn, game } = turnObject;
+  const { facts, game, svgData: oldSvgData, turn: oldTurn } = turnObject;
   const factTexts = facts.map(({ text }) => text);
   const currentFact = factTexts[factTexts.length - 1];
   const oldFacts = factTexts.slice(0, factTexts.length - 1);
 
-  const subcommand = interaction.options.getSubcommand();
-  switch (subcommand) {
-    case "add":
-      newFact = `${currentFact} ${newFact}`;
-      break;
-    case "update":
-      newFact = newFact == undefined ? currentFact : newFact;
-      break;
-    case "replace":
-      const { replace } = getReplaceOptions(interaction);
-      newFact = currentFact.replace(replace, newFact);
-      break;
-    default:
-      break;
-  }
-  let svg = null;
-  if (figmaUrl == undefined) {
-    figmaUrl = prevFigmaUrl;
-  }
-  console.log("#############3 figma url");
-  console.log(figmaUrl);
-
-  if (figmaUrl != undefined) {
-    const figmaResult = await handleFigma({
-      figmaUrl,
-      tokens,
-      interaction,
-      fact: newFact,
-    });
-    if (figmaResult != undefined) {
-      ({ fact: newFact, svg } = figmaResult);
-    }
+  // const subcommand = interaction.options.getSubcommand();
+  // switch (subcommand) {
+  //   case "add":
+  //     newFact = `${currentFact} ${newFact}`;
+  //     break;
+  //   case "update":
+  //     newFact = newFact == undefined ? currentFact : newFact;
+  //     break;
+  //   case "replace":
+  //     const { replace } = getReplaceOptions(interaction);
+  //     newFact = currentFact.replace(replace, newFact);
+  //     break;
+  //   default:
+  //     break;
+  // }
+  let svgData = null;
+  if (oldSvgData != null) {
+    const figmaData = await getLastFigmaData(interaction);
+    const svg = await getSvg(figmaData);
+    svgData = { svg, description: oldSvgData.description };
   }
 
-  const {
-    completions,
-    messages,
-    status,
-    turn: newTurn,
-  } = await step({
+  const { completions, messages, status, turn } = await step({
     coherenceCheck: game.coherenceCheck,
     currentFact,
     newFact,
     oldFacts,
     proposition: game.proposition,
-    turn,
+    turn: oldTurn,
   });
 
   const completionsArray: Completion[] = Object.values(completions).flatMap(
-    (c) => (c == null ? [] : c),
+    (c) => c ?? [],
   );
   if (goToNextTurn(status)) {
     factTexts.push(newFact);
   }
   const newTurnObject = await prisma.turn.create({
     data: {
-      facts: {
-        create: factTexts.map((text) => ({ text })),
-      },
       completions: {
         create: completionsArray,
       },
-      figmaUrl,
-      gameId: game.id,
+      facts: {
+        create: factTexts.map((text) => ({ text })),
+      },
+      game: {
+        connect: { id: game.id },
+      },
+      newFact,
       player: interaction.user.username,
       status,
-      svg,
-      turn: newTurn,
-      newFact,
+      svgData: null,
+      turn,
     },
   });
   console.log(newTurnObject);
@@ -680,19 +701,22 @@ async function handleOther(
 export const Commands = [
   {
     data: new SlashCommandBuilder()
+      .setName("figma")
+      .setDescription(`Submit figma data`)
+      .addStringOption((option) =>
+        option.setName("token").setDescription("Your figma dev token."),
+      )
+      .addStringOption((option) =>
+        option.setName("url").setDescription("The URL for your figma diagram."),
+      ),
+    async execute(interaction: ChatInputCommandInteraction) {
+      throw new Error("Not implemented");
+    },
+  },
+  {
+    data: new SlashCommandBuilder()
       .setName("play")
       .setDescription(`Play break the chain`)
-      .addSubcommand((subcommand) =>
-        subcommand
-          .setName(subcommands.figmaToken)
-          .setDescription("Authenticate figma.")
-          .addStringOption((option) =>
-            option
-              .setName("token")
-              .setDescription("Your figma dev token.")
-              .setRequired(true),
-          ),
-      )
       .addSubcommand((subcommand) =>
         subcommand
           .setName(subcommands.start)
@@ -703,33 +727,10 @@ export const Commands = [
               .setDescription("The target proposition that GPT tries to prove.")
               .setRequired(false),
           )
-          .addStringOption((option) =>
-            option
-              .setName("figma-url")
-              .setDescription("The new facts to replace the old ones with.")
-              .setRequired(false),
-          )
           .addBooleanOption((option) =>
             option
               .setName("coherence-check")
               .setDescription("Whether to check for coherence.")
-              .setRequired(false),
-          ),
-      )
-      .addSubcommand((subcommand) =>
-        subcommand
-          .setName(subcommands.add)
-          .setDescription("Choose a new set of facts to add the old set.")
-          .addStringOption((option) =>
-            option
-              .setName("new-facts")
-              .setDescription("The new facts to add")
-              .setRequired(true),
-          )
-          .addStringOption((option) =>
-            option
-              .setName("figma-url")
-              .setDescription("The new facts to replace the old ones with.")
               .setRequired(false),
           ),
       )
@@ -742,50 +743,17 @@ export const Commands = [
               .setName("new-facts")
               .setDescription("The new facts to replace the old ones with.")
               .setRequired(false),
-          )
-          .addStringOption((option) =>
-            option
-              .setName("figma-url")
-              .setDescription("The new facts to replace the old ones with.")
-              .setRequired(false),
-          ),
-      )
-      .addSubcommand((subcommand) =>
-        subcommand
-          .setName(subcommands.replace)
-          .setDescription(
-            "Choose a new set of facts to replace a substring of the old set.",
-          )
-          .addStringOption((option) =>
-            option
-              .setName("replace")
-              .setDescription("The substring to replace the new facts.")
-              .setRequired(true),
-          )
-          .addStringOption((option) =>
-            option
-              .setName("new-facts")
-              .setDescription("The new facts to replace the substring with.")
-              .setRequired(true),
           ),
       ),
-    tokens: {
-      [process.env.DISCORD_USERNAME]: process.env.FIGMA_TOKEN,
-    },
     async execute(interaction: ChatInputCommandInteraction) {
       const subcommand = interaction.options.getSubcommand();
       await interaction.deferReply();
       switch (subcommand) {
         case subcommands.start:
-          await handleStart(interaction, this.tokens);
+          await handleStart(interaction);
           break;
-        case subcommands.figmaToken:
-          const { token } = getFigmaTokenOptions(interaction);
-          this.tokens[interaction.user.username] = token;
-          handleInteraction({ interaction, message: "Saved figma token." });
-          break;
-        default:
-          await handleOther(interaction, this.tokens);
+        case subcommands.update:
+          await handleUpdate(interaction);
           break;
       }
     },
