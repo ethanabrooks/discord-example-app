@@ -475,6 +475,13 @@ async function handleStart(
     const positiveFact = `${randomChoice(propositions)}.`;
     proposition = truth ? positiveFact : (await negate(positiveFact)).output;
   }
+  const turnObject = await prisma.turn.findFirst({
+    where: { game: { channel: interaction.channelId } },
+    orderBy: { id: "desc" },
+  });
+  if (turnObject != undefined) {
+    figmaUrl = turnObject.figmaUrl;
+  }
   const figmaResult = await handleFigma({
     figmaUrl,
     tokens,
