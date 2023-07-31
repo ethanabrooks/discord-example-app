@@ -4,15 +4,15 @@ import {
   TextChannel,
   SlashCommandSubcommandBuilder,
 } from "discord.js";
-import catchError from "./utils/errors.js";
+import catchError from "./errors.js";
 import { Completion } from "./gpt.js";
 import propositions from "./propositions.js";
 import { FigmaData, PrismaClient } from "@prisma/client";
 import { getSvgUrl } from "./figma.js";
-import { encrypt, decrypt } from "./utils/encryption.js";
+import { encrypt, decrypt } from "./encryption.js";
 import { step, goToNextTurn, getInferenceSetupText } from "./step.js";
 import { negate } from "./text.js";
-import { randomBoolean } from "./math.js";
+import { randomBoolean, randomChoice } from "./math.js";
 import { handleInteraction } from "./interaction.js";
 import { handleThreads } from "./threads.js";
 export const prisma = new PrismaClient();
@@ -24,135 +24,6 @@ const subcommands = {
   start: "start",
   update: "update",
 };
-
-// async function step({
-//   coherenceCheck,
-//   currentFact,
-//   newFact,
-//   oldFacts,
-//   proposition,
-//   turn,
-// }: {
-//   coherenceCheck: boolean;
-//   currentFact: string;
-//   newFact: string;
-//   oldFacts: string[];
-//   proposition: string;
-//   turn: number;
-// }): Promise<{
-//   messages: string[];
-//   completions: Inferences<Completion[]>;
-//   status: Status;
-//   turn: number;
-// }> {
-//   const commentsIntro = [
-//     `${headerPrefix} Proposed new facts`,
-//     `_${newFact}_`,
-//     `${headerPrefix} Result`,
-//   ];
-
-//   function turnResult({
-//     status,
-//     completions,
-//     comments,
-//   }: {
-//     status: Status;
-//     completions: Inferences<Completion[]>;
-//     comments: string[];
-//   }) {
-//     const verb = goToNextTurn(status)
-//       ? "You replaced"
-//       : "You failed to replace";
-//     const whatYouDid = `\
-// ${verb}: _${currentFact}_
-// with: "${newFact}"`;
-//     return {
-//       messages: [
-//         whatYouDid,
-//         ...comments,
-//         getInferenceSetupText({
-//           fact: goToNextTurn(status) ? newFact : currentFact,
-//           proposition,
-//           factStatus: goToNextTurn(status) ? "updated" : "unchanged",
-//         }),
-//         getStatusText(status),
-//       ],
-//       completions,
-//       status,
-//       turn: turn + +goToNextTurn(status),
-//     };
-//   }
-
-//   const oneStep = await getInferenceResult({
-//     premise: newFact,
-//     conclusion: currentFact,
-//   });
-//   if (!oneStep.success) {
-//     return turnResult({
-//       status: "try again",
-//       completions: { oneStep: oneStep.completions },
-//       comments: [
-//         ...commentsIntro,
-//         "The new facts did not imply the replaced fact.",
-//       ],
-//     });
-//   }
-
-//   if (turn == 0) {
-//     return turnResult({
-//       status: "continue",
-//       completions: { oneStep: oneStep.completions },
-//       comments: [
-//         ...commentsIntro,
-//         `The new fact imply _${proposition}_`,
-//         "The first fact was successfully updated.",
-//       ],
-//     });
-//   }
-//   const oneStepComment = `The new facts _${newFact}_`;
-//   let coherenceCompletions = null;
-//   if (coherenceCheck) {
-//     const coherence = await getInferenceResult({
-//       premise: [...oldFacts, newFact].join("\n"),
-//       conclusion: proposition,
-//     });
-//     if (!coherence.success) {
-//       return turnResult({
-//         status: "try again",
-//         completions: {
-//           oneStep: oneStep.completions,
-//           coherence: coherence.completions,
-//         },
-//         comments: [
-//           ...commentsIntro,
-//           `${oneStepComment}. However, taken with all of the existing facts, they do not imply the proposition. The proposed facts were rejected.`,
-//         ],
-//       });
-//     }
-//     coherenceCompletions = coherence.completions;
-//   }
-//   const multiStep = await getInferenceResult({
-//     premise: newFact,
-//     conclusion: proposition,
-//   });
-//   const status = multiStep.success ? "continue" : "win";
-//   return turnResult({
-//     status,
-//     completions: {
-//       oneStep: oneStep.completions,
-//       coherence: coherenceCompletions,
-//       multiStep: multiStep.completions,
-//     },
-//     comments: [
-//       ...commentsIntro,
-//       oneStepComment,
-//       `Taken with all of the existing facts, they also imply the target proposition: _${proposition}_`,
-//       multiStep.success
-//         ? `Your new facts were added but the target proposition still follows from updated facts.`
-//         : "You broke the chain! GPT couldn't infer the target proposition from the updated facts.",
-//     ],
-//   });
-// }
 
 function throwIfUndefined<T>(value: T | undefined, name: string) {
   if (value == undefined) {
@@ -215,10 +86,6 @@ async function getSvg(figmaData: FigmaData): Promise<string | void> {
   return await fetch(svgUrl)
     .then((response) => response.text())
     .catch(catchError);
-}
-
-function randomChoice<Type>(array: Type[]) {
-  return array[Math.floor(Math.random() * array.length)];
 }
 
 async function handleStart(interaction: ChatInputCommandInteraction) {

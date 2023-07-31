@@ -1,10 +1,5 @@
-import {
-  Attachment,
-  Collection,
-  CommandInteraction,
-  Message,
-} from "discord.js";
-import { createChatCompletionWithBackoff } from "../gpt.js";
+import { Collection, CommandInteraction, Message } from "discord.js";
+import { createChatCompletionWithBackoff } from "./gpt.js";
 import { ChatCompletionRequestMessage } from "openai";
 import { Logger } from "pino";
 import get from "axios";
@@ -77,10 +72,10 @@ async function getCCRMessages(
     await Promise.all(attachmentMessagePromises)
   ).flat();
 
-  const content = `${message.author.username}: ${message.content}`
+  const content = `${message.author.username}: ${message.content}`;
   const mainMessage: ChatCompletionRequestMessage = {
     role: getRole(message.author?.id),
-    content
+    content,
   };
   return attachmentMessages.concat([mainMessage]);
 }

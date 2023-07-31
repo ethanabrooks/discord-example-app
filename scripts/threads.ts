@@ -2,13 +2,13 @@ import { TextChannel } from "discord.js";
 import { Completion } from "./gpt.js";
 import { BUILT_IN_RESPONSE_LIMIT, chunkString } from "./text.js";
 
-type Inferences<Type> = {
+type Threads<Type> = {
   oneStep?: Type;
   coherence?: Type;
   multiStep?: Type;
 };
 
-const threadNames: Inferences<string> = {
+const threadNames: Threads<string> = {
   oneStep: "Reasoning for replacement inference",
   coherence: "Reasoning for coherence inference",
   multiStep: "Reasoning for chain inference",
@@ -16,7 +16,7 @@ const threadNames: Inferences<string> = {
 
 export async function handleThreads(
   channel: TextChannel,
-  completions: Inferences<Completion[]>,
+  completions: Threads<Completion[]>,
 ) {
   return Object.entries(completions)
     .filter(([, completions]: [string, Completion[]]) => completions != null)

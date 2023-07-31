@@ -1,5 +1,5 @@
 import fetch from "node-fetch";
-import catchError from "./utils/errors.js";
+import catchError from "./errors.js";
 
 interface FigmaNode {
   id: string;
@@ -95,6 +95,3 @@ export async function getSvgUrl(
       return null;
     });
 }
-
-// getSvgUrl("LLt04otetjL6wQUYaTVz6U", process.env.FIGMA_TOKEN!).then(console.log);
-// getPngUrl("LLt04otetjL6wQUYaTVz6U", process.env.FIGMA_TOKEN!).then(console.log);

@@ -9,10 +9,6 @@ export function splitAtResponseLimit(text: string) {
   ];
 }
 
-function bold(text: string) {
-  return `**${text}**`;
-}
-
 export async function negate(text: string) {
   return await complete({
     input: `Negate this statement (just return the negated statement, nothing else): ${text}`,

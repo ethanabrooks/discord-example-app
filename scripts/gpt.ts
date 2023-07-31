@@ -6,9 +6,8 @@ import {
 } from "openai";
 import { encode } from "gpt-3-encoder";
 
-import text from "./prompts/debug.js";
 import { Logger } from "pino";
-import catchError from "./utils/errors.js";
+import catchError from "./errors.js";
 
 const MODEL = "gpt-3.5-turbo-0301";
 export const DEBUG = false;
@@ -370,38 +369,36 @@ export async function createChatCompletionWithBackoff({
     logger.debug({ inputMessages });
   }
   const input = messages.map(({ content }) => content).join("");
-  const content: string | undefined = DEBUG
-    ? text
-    : await openai
-        .createChatCompletion({
-          model,
-          messages: inputMessages,
-          stop: stopWord,
-          temperature: 0,
-          max_tokens: 1000,
-          top_p: 0.5,
-        })
-        .then((completion) => {
-          const [choice] = completion.data.choices;
-          return choice.message?.content;
-        })
-        .catch(async (error) => {
-          catchError(error);
-          console.error(`Attempt failed. Retrying in ${delay}ms...`);
+  const content: string | undefined = await openai
+    .createChatCompletion({
+      model,
+      messages: inputMessages,
+      stop: stopWord,
+      temperature: 0,
+      max_tokens: 1000,
+      top_p: 0.5,
+    })
+    .then((completion) => {
+      const [choice] = completion.data.choices;
+      return choice.message?.content;
+    })
+    .catch(async (error) => {
+      catchError(error);
+      console.error(`Attempt failed. Retrying in ${delay}ms...`);
 
-          // Wait for the delay period and then retry
-          await new Promise((resolve) => setTimeout(resolve, delay));
+      // Wait for the delay period and then retry
+      await new Promise((resolve) => setTimeout(resolve, delay));
 
-          // Retry the operation, with a longer delay
-          const retry = await createChatCompletionWithBackoff({
-            messages,
-            stopWord,
-            delay: delay * 2,
-            model,
-            logger,
-          });
-          return retry.output;
-        });
+      // Retry the operation, with a longer delay
+      const retry = await createChatCompletionWithBackoff({
+        messages,
+        stopWord,
+        delay: delay * 2,
+        model,
+        logger,
+      });
+      return retry.output;
+    });
   if (content == null) {
     return {
       input,
