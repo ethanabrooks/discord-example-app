@@ -90,6 +90,7 @@ function addIndexToFigures(facts: Fact[], index: number = 0) {
 export function getImageText(image: Image, index: number) {
   const { svg, description } = image;
   return `\
+Figure ${index}
 \`\`\`svg
 ${svg}
 \`\`\``;
@@ -110,7 +111,7 @@ function getImageTexts(facts: { fact: Fact; index: number }[]) {
 }
 
 function getTextReferencingFigure(text: string, index: number) {
-  return `In figure ${index}, ${lowerCaseFirstLetter(text)}`;
+  return `${removeFinalPunctuation(text)} in figure ${index}.`;
 }
 
 export function getFactText(fact: Fact, index: number = null) {
