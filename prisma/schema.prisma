@@ -18,11 +18,22 @@ model FigmaData {
   tokenIV        String // this is the initialization vector (IV) for the token
 }
 
-model SvgData {
+model Image {
   id          Int     @id @default(autoincrement())
   description String?
   svg         String
+  factId      Int     @unique
+  fact        Fact    @relation(fields: [factId], references: [id])
   Turn        Turn[]
+}
+
+model Fact {
+  id     Int    @id @default(autoincrement())
+  image  Image?
+  turn   Turn   @relation(fields: [turnId], references: [id])
+  turnId Int
+  text   String
+  Game   Game[]
 }
 
 model Completion {
@@ -31,13 +42,6 @@ model Completion {
   turnId Int
   input  String
   output String
-}
-
-model Fact {
-  id     Int    @id @default(autoincrement())
-  turn   Turn   @relation(fields: [turnId], references: [id])
-  turnId Int
-  text   String
 }
 
 model Turn {
@@ -49,9 +53,9 @@ model Turn {
   newFact     String?
   player      String
   status      String
-  svgData     SvgData      @relation(fields: [svgDataId], references: [id])
-  svgDataId   Int
   turn        Int
+  Image       Image?       @relation(fields: [imageId], references: [id])
+  imageId     Int?
 }
 
 model Game {
@@ -59,5 +63,6 @@ model Game {
   turns          Turn[]
   channel        String
   coherenceCheck Boolean
-  proposition    String
+  Fact           Fact?   @relation(fields: [factId], references: [id])
+  factId         Int?
 }

@@ -18,6 +18,11 @@ export type Completion = {
   output: string;
 };
 
+export const gpt = {
+  three: "gpt-3.5-turbo",
+  four: "gpt-4",
+};
+
 type IndexedMessage = {
   role: ChatCompletionRequestMessageRoleEnum;
   content: string | undefined;

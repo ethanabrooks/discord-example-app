@@ -1,133 +1,22 @@
 import {
   SlashCommandBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  CommandInteraction,
-  ButtonInteraction,
-  BufferResolvable,
-  JSONEncodable,
-  APIAttachment,
-  Attachment,
-  AttachmentBuilder,
-  AttachmentPayload,
   ChatInputCommandInteraction,
-  ButtonStyle,
   TextChannel,
-  EmbedBuilder,
-  EmbedData,
-  APIEmbed,
+  SlashCommandSubcommandBuilder,
 } from "discord.js";
-import { buttons } from "./buttons.js";
-import { Stream } from "form-data";
 import catchError from "./utils/errors.js";
-import { complete, Completion } from "./gpt.js";
+import { Completion } from "./gpt.js";
 import propositions from "./propositions.js";
 import { FigmaData, PrismaClient } from "@prisma/client";
 import { getSvgUrl } from "./figma.js";
-import { decrypt } from "./utils/encryption.js";
+import { encrypt, decrypt } from "./utils/encryption.js";
+import { step, goToNextTurn, getInferenceSetupText } from "./step.js";
+import { negate } from "./text.js";
+import { randomBoolean } from "./math.js";
+import { handleInteraction } from "./interaction.js";
+import { handleThreads } from "./threads.js";
 export const prisma = new PrismaClient();
 
-const BUILT_IN_RESPONSE_LIMIT = 2000;
-const headerPrefix = "###";
-const tryAgainText = `${headerPrefix} Try again!`;
-const keepPlayingText = `${headerPrefix} Keep playing.`;
-const winText = "# You win!";
-type Inferences<Type> = {
-  oneStep?: Type;
-  coherence?: Type;
-  multiStep?: Type;
-};
-
-const threadNames: Inferences<string> = {
-  oneStep: "Reasoning for replacement inference",
-  coherence: "Reasoning for coherence inference",
-  multiStep: "Reasoning for chain inference",
-};
-
-type Status = "win" | "try again" | "continue";
-
-function splitAtResponseLimit(text: string) {
-  return [
-    text.slice(0, BUILT_IN_RESPONSE_LIMIT),
-    text.slice(BUILT_IN_RESPONSE_LIMIT),
-  ];
-}
-
-async function handleInteraction({
-  interaction,
-  embeds = [],
-  firstReply = true,
-  files = [],
-  message,
-}: {
-  embeds?: (APIEmbed | JSONEncodable<APIEmbed>)[];
-  firstReply?: boolean;
-  files?: (
-    | BufferResolvable
-    | Stream
-    | JSONEncodable<APIAttachment>
-    | Attachment
-    | AttachmentBuilder
-    | AttachmentPayload
-  )[];
-  interaction: CommandInteraction;
-  message: string;
-}) {
-  const [content, excess] = splitAtResponseLimit(message);
-  const button = new ButtonBuilder()
-    .setCustomId(buttons.reveal.id)
-    .setLabel("Response cut off. Click to reveal")
-    .setStyle(ButtonStyle.Primary);
-  const components: ActionRowBuilder<ButtonBuilder>[] =
-    excess.length == 0
-      ? []
-      : [new ActionRowBuilder<ButtonBuilder>().addComponents(button)];
-
-  const reply = { content, components, embeds, files };
-  const channel = interaction.channel;
-  // Update reply
-  await (firstReply ? interaction.followUp(reply) : channel.send(reply)).then(
-    (response) =>
-      response
-        .awaitMessageComponent()
-        .then(async (buttonInteraction: ButtonInteraction) => {
-          async function acknowledgeAndremoveButtons() {
-            const content =
-              reply.content.length > 0 ? reply.content : "Content was empty"; // this is necessary because of an annoying error that gets thrown when you try to update a message with no content
-            await buttonInteraction.update({
-              content,
-              components: [],
-            });
-          }
-          // Send new message
-          switch (buttonInteraction.customId) {
-            case buttons.reveal.id:
-              acknowledgeAndremoveButtons();
-              handleInteraction({
-                message: excess,
-                interaction,
-                firstReply,
-              });
-              break;
-            default:
-              throw Error("Cannot use button " + buttonInteraction.customId);
-          }
-        })
-        .catch(async (e) => {
-          catchError(e);
-          return await (!firstReply
-            ? interaction.followUp(reply)
-            : channel.send(reply).catch((e) => {
-                catchError(e);
-                return;
-              }));
-        }),
-  );
-}
-const gpt = {
-  three: "gpt-3.5-turbo",
-  four: "gpt-4",
-};
 const subcommands = {
   // add: "add",
   figma: "figma",
@@ -136,261 +25,134 @@ const subcommands = {
   update: "update",
 };
 
-function inferenceToBoolean(inference: string) {
-  inference = inference.toLowerCase();
-  const containsTrue = inference.includes("true");
-  const containsFalse = inference.includes("false");
-  if (
-    inference.includes("true than false") ||
-    (containsTrue && !containsFalse)
-  ) {
-    return true;
-  } else if (
-    inference.includes("false than true") ||
-    (!containsTrue && containsFalse)
-  ) {
-    return false;
-  }
-  return null;
-}
+// async function step({
+//   coherenceCheck,
+//   currentFact,
+//   newFact,
+//   oldFacts,
+//   proposition,
+//   turn,
+// }: {
+//   coherenceCheck: boolean;
+//   currentFact: string;
+//   newFact: string;
+//   oldFacts: string[];
+//   proposition: string;
+//   turn: number;
+// }): Promise<{
+//   messages: string[];
+//   completions: Inferences<Completion[]>;
+//   status: Status;
+//   turn: number;
+// }> {
+//   const commentsIntro = [
+//     `${headerPrefix} Proposed new facts`,
+//     `_${newFact}_`,
+//     `${headerPrefix} Result`,
+//   ];
 
-function randomChoice<Type>(array: Type[]) {
-  return array[Math.floor(Math.random() * array.length)];
-}
+//   function turnResult({
+//     status,
+//     completions,
+//     comments,
+//   }: {
+//     status: Status;
+//     completions: Inferences<Completion[]>;
+//     comments: string[];
+//   }) {
+//     const verb = goToNextTurn(status)
+//       ? "You replaced"
+//       : "You failed to replace";
+//     const whatYouDid = `\
+// ${verb}: _${currentFact}_
+// with: "${newFact}"`;
+//     return {
+//       messages: [
+//         whatYouDid,
+//         ...comments,
+//         getInferenceSetupText({
+//           fact: goToNextTurn(status) ? newFact : currentFact,
+//           proposition,
+//           factStatus: goToNextTurn(status) ? "updated" : "unchanged",
+//         }),
+//         getStatusText(status),
+//       ],
+//       completions,
+//       status,
+//       turn: turn + +goToNextTurn(status),
+//     };
+//   }
 
-function randomBoolean() {
-  return Math.random() < 0.5;
-}
+//   const oneStep = await getInferenceResult({
+//     premise: newFact,
+//     conclusion: currentFact,
+//   });
+//   if (!oneStep.success) {
+//     return turnResult({
+//       status: "try again",
+//       completions: { oneStep: oneStep.completions },
+//       comments: [
+//         ...commentsIntro,
+//         "The new facts did not imply the replaced fact.",
+//       ],
+//     });
+//   }
 
-async function negate(text: string) {
-  return await complete({
-    input: `Negate this statement (just return the negated statement, nothing else): ${text}`,
-    model: `${gpt.three}`,
-  });
-}
-
-function getStatusText(status: Status) {
-  switch (status) {
-    case "try again":
-      return tryAgainText;
-    case "continue":
-      return keepPlayingText;
-    case "win":
-      return winText;
-    default:
-      throw new Error(`Invalid status: ${status}`);
-  }
-}
-
-function goToNextTurn(status: Status) {
-  switch (status) {
-    case "try again":
-      return false;
-    case "continue":
-    case "win":
-      return true;
-    default:
-      throw new Error(`Invalid status: ${status}`);
-  }
-}
-
-async function infer(premise: string, conclusion: string) {
-  const completions: Completion[] = [];
-  const concludingText = `In conclusion, the proposition is probably [true|false|indeterminate]`;
-  const input = `Consider the following facts: _${premise}_
-Do these facts imply _${conclusion}_? Think through it step by step. When you are done, finish with the text: "${concludingText}"`;
-  const completion = await complete({ input, model: gpt.four });
-  completions.push(completion);
-  let [explanation, inference] = completion.output.split(
-    "In conclusion, the proposition",
-  );
-  if (inference == undefined) {
-    const inferenceCompletion = await complete({
-      input: `${input}
-${explanation}
-
-${concludingText}`,
-      model: gpt.four,
-    });
-    completions.push(inferenceCompletion);
-    inference = inferenceCompletion.output;
-  }
-  return { inference, completions };
-}
-
-async function step({
-  coherenceCheck,
-  currentFact,
-  newFact,
-  oldFacts,
-  proposition,
-  turn,
-}: {
-  coherenceCheck: boolean;
-  currentFact: string;
-  newFact: string;
-  oldFacts: string[];
-  proposition: string;
-  turn: number;
-}): Promise<{
-  messages: string[];
-  completions: Inferences<Completion[]>;
-  status: Status;
-  turn: number;
-}> {
-  const commentsIntro = [
-    `${headerPrefix} Proposed new facts`,
-    `_${newFact}_`,
-    `${headerPrefix} Result`,
-  ];
-
-  function turnResult({
-    status,
-    completions,
-    comments,
-  }: {
-    status: Status;
-    completions: Inferences<Completion[]>;
-    comments: string[];
-  }) {
-    const verb = goToNextTurn(status)
-      ? "You replaced"
-      : "You failed to replace";
-    const whatYouDid = `\
-${verb}: _${currentFact}_ 
-with: "${newFact}"`;
-    return {
-      messages: [
-        whatYouDid,
-        ...comments,
-        getInferenceSetupText({
-          fact: goToNextTurn(status) ? newFact : currentFact,
-          proposition,
-          factStatus: goToNextTurn(status) ? "updated" : "unchanged",
-        }),
-        getStatusText(status),
-      ],
-      completions,
-      status,
-      turn: turn + +goToNextTurn(status),
-    };
-  }
-
-  const oneStep = await getInferenceResult({
-    premise: newFact,
-    conclusion: currentFact,
-  });
-  if (!oneStep.success) {
-    return turnResult({
-      status: "try again",
-      completions: { oneStep: oneStep.completions },
-      comments: [
-        ...commentsIntro,
-        "The new facts did not imply the replaced fact.",
-      ],
-    });
-  }
-
-  if (turn == 0) {
-    return turnResult({
-      status: "continue",
-      completions: { oneStep: oneStep.completions },
-      comments: [
-        ...commentsIntro,
-        `The new fact imply _${proposition}_`,
-        "The first fact was successfully updated.",
-      ],
-    });
-  }
-  const oneStepComment = `The new facts _${newFact}_`;
-  let coherenceCompletions = null;
-  if (coherenceCheck) {
-    const coherence = await getInferenceResult({
-      premise: [...oldFacts, newFact].join("\n"),
-      conclusion: proposition,
-    });
-    if (!coherence.success) {
-      return turnResult({
-        status: "try again",
-        completions: {
-          oneStep: oneStep.completions,
-          coherence: coherence.completions,
-        },
-        comments: [
-          ...commentsIntro,
-          `${oneStepComment}. However, taken with all of the existing facts, they do not imply the proposition. The proposed facts were rejected.`,
-        ],
-      });
-    }
-    coherenceCompletions = coherence.completions;
-  }
-  const multiStep = await getInferenceResult({
-    premise: newFact,
-    conclusion: proposition,
-  });
-  const status = multiStep.success ? "continue" : "win";
-  return turnResult({
-    status,
-    completions: {
-      oneStep: oneStep.completions,
-      coherence: coherenceCompletions,
-      multiStep: multiStep.completions,
-    },
-    comments: [
-      ...commentsIntro,
-      oneStepComment,
-      `Taken with all of the existing facts, they also imply the target proposition: _${proposition}_`,
-      multiStep.success
-        ? `Your new facts were added but the target proposition still follows from updated facts.`
-        : "You broke the chain! GPT couldn't infer the target proposition from the updated facts.",
-    ],
-  });
-}
-
-async function getInferenceResult({
-  premise,
-  conclusion,
-}: {
-  premise: string;
-  conclusion: string;
-}) {
-  const { completions, inference } = await infer(premise, conclusion);
-  const success = inferenceToBoolean(inference);
-  return { completions, success };
-}
-
-function bold(text: string) {
-  return `**${text}**`;
-}
-
-type FactStatus = "initial" | "updated" | "unchanged";
-
-function getFactWord(status: FactStatus) {
-  switch (status) {
-    case "initial":
-      return "";
-    case "updated":
-      return " now";
-    case "unchanged":
-      return " still";
-  }
-}
-
-function getInferenceSetupText({
-  fact,
-  proposition,
-  factStatus,
-}: {
-  fact: string;
-  factStatus: FactStatus;
-  proposition: string;
-}) {
-  return `\
-${headerPrefix} The facts are${getFactWord(factStatus)}:
-${fact}
-${headerPrefix} Target Proposition
-_${proposition}_`;
-}
+//   if (turn == 0) {
+//     return turnResult({
+//       status: "continue",
+//       completions: { oneStep: oneStep.completions },
+//       comments: [
+//         ...commentsIntro,
+//         `The new fact imply _${proposition}_`,
+//         "The first fact was successfully updated.",
+//       ],
+//     });
+//   }
+//   const oneStepComment = `The new facts _${newFact}_`;
+//   let coherenceCompletions = null;
+//   if (coherenceCheck) {
+//     const coherence = await getInferenceResult({
+//       premise: [...oldFacts, newFact].join("\n"),
+//       conclusion: proposition,
+//     });
+//     if (!coherence.success) {
+//       return turnResult({
+//         status: "try again",
+//         completions: {
+//           oneStep: oneStep.completions,
+//           coherence: coherence.completions,
+//         },
+//         comments: [
+//           ...commentsIntro,
+//           `${oneStepComment}. However, taken with all of the existing facts, they do not imply the proposition. The proposed facts were rejected.`,
+//         ],
+//       });
+//     }
+//     coherenceCompletions = coherence.completions;
+//   }
+//   const multiStep = await getInferenceResult({
+//     premise: newFact,
+//     conclusion: proposition,
+//   });
+//   const status = multiStep.success ? "continue" : "win";
+//   return turnResult({
+//     status,
+//     completions: {
+//       oneStep: oneStep.completions,
+//       coherence: coherenceCompletions,
+//       multiStep: multiStep.completions,
+//     },
+//     comments: [
+//       ...commentsIntro,
+//       oneStepComment,
+//       `Taken with all of the existing facts, they also imply the target proposition: _${proposition}_`,
+//       multiStep.success
+//         ? `Your new facts were added but the target proposition still follows from updated facts.`
+//         : "You broke the chain! GPT couldn't infer the target proposition from the updated facts.",
+//     ],
+//   });
+// }
 
 function throwIfUndefined<T>(value: T | undefined, name: string) {
   if (value == undefined) {
@@ -436,45 +198,6 @@ function getUpdateOptions(interaction: ChatInputCommandInteraction) {
 //   return { newFact, replace };
 // }
 
-function chunkString(input: string, chunkSize: number): string[] {
-  return input.length == 0
-    ? []
-    : [
-        input.slice(0, chunkSize),
-        ...chunkString(input.slice(chunkSize), chunkSize),
-      ];
-}
-
-async function handleThreads(
-  channel: TextChannel,
-  completions: Inferences<Completion[]>,
-) {
-  return await Object.entries(completions)
-    .filter(([, completions]: [string, Completion[]]) => completions != null)
-    .map(([key, completions]: [string, Completion[]]) => ({
-      name: threadNames[key],
-      text: completions
-        .map(
-          ({ input, output }) => `
-# Input
-${input}
-# Output
-${output}
-`,
-        )
-        .join("\n"),
-    }))
-    .forEach(async ({ name, text }) => {
-      const thread = await channel.threads.create({
-        name,
-        autoArchiveDuration: 60,
-      });
-      chunkString(text, BUILT_IN_RESPONSE_LIMIT).forEach(async (chunk) => {
-        return await thread.send(chunk);
-      });
-    });
-}
-
 async function getLastFigmaData(interaction: ChatInputCommandInteraction) {
   return await prisma.figmaData.findFirst({
     where: { username: interaction.user.username },
@@ -482,27 +205,32 @@ async function getLastFigmaData(interaction: ChatInputCommandInteraction) {
   });
 }
 
-async function getSvg(figmaData: FigmaData) {
+async function getSvg(figmaData: FigmaData): Promise<string | void> {
   // Decrypt the token from the retrieved figmaData
   const { fileId, encryptedToken, tokenIV } = figmaData;
   const token = decrypt({ iv: tokenIV, content: encryptedToken });
 
   // Get the svg url with the file ID and decrypted token
   const svgUrl = await getSvgUrl(fileId, token);
-  return fetch(svgUrl)
+  return await fetch(svgUrl)
     .then((response) => response.text())
     .catch(catchError);
 }
 
+function randomChoice<Type>(array: Type[]) {
+  return array[Math.floor(Math.random() * array.length)];
+}
+
 async function handleStart(interaction: ChatInputCommandInteraction) {
-  let { proposition, coherenceCheck, useFigma } = getStartOptions(interaction);
+  let { coherenceCheck, figmaDescription, proposition, useFigma } =
+    getStartOptions(interaction);
   const truth = randomBoolean();
   if (proposition == undefined) {
     const positiveFact = `${randomChoice(propositions)}.`;
     proposition = truth ? positiveFact : (await negate(positiveFact)).output;
   }
 
-  let svgData = null;
+  let image = undefined;
   if (useFigma) {
     const figmaData = await getLastFigmaData(interaction);
     if (figmaData == null) {
@@ -511,30 +239,36 @@ async function handleStart(interaction: ChatInputCommandInteraction) {
         message: `You need to submit figma data. Run \`/figma\``,
       });
     }
-    const svg = getSvg(figmaData);
+    const svg = await getSvg(figmaData);
+    if (typeof svg !== "string") {
+      return await handleInteraction({
+        interaction,
+        message: `Couldn't get svg data from Figma`,
+      });
+    }
     // Retrieve the description from the most recent turn data
-    const turnData = await prisma.turn.findFirst({
-      include: { svgData: true },
-      where: { game: { channel: interaction.channelId } },
+    const oldFact = await prisma.fact.findFirst({
+      include: { image: true },
+      where: { turn: { game: { channel: interaction.channelId } } },
       orderBy: { id: "desc" },
     });
 
     // If a turnData was found and it has svgData with a description, use it
     // Otherwise, default to an empty string
-    const description = turnData?.svgData?.description;
-    svgData = { svg, description };
+    const description = figmaDescription ?? oldFact?.image?.description;
+    image = { svg, description };
+
+    proposition = addFigmaToFact(proposition, svg, description);
   }
   const game = await prisma.game.create({
     data: {
       channel: interaction.channelId,
       coherenceCheck,
-      proposition,
       turns: {
         create: {
-          facts: { create: { text: proposition } },
+          facts: { create: { text: proposition, image: { create: image } } },
           player: interaction.user.username,
           status: "initial",
-          svgData,
           turn: 0,
         },
       },
@@ -542,91 +276,37 @@ async function handleStart(interaction: ChatInputCommandInteraction) {
   });
   console.log(game);
 
+  const fact = { text: proposition, image };
+
   await handleInteraction({
     interaction,
     message: getInferenceSetupText({
-      fact: proposition,
+      fact,
       factStatus: "initial",
-      proposition,
+      proposition: fact,
     }),
   });
 }
 
-// function updateFactWithSvg(fact: string, svg: string) {
-//   const [pre, code, post] = fact.split(/```svg\s|\s```/);
-
-//   if (svg != null) {
-//     const noCodeInFact = `\
-// \`\`\`svg
-// ${svg}
-// \`\`\`
-// ${pre}`;
-//     const codeInFact = `\
-// ${pre}\`\`\`svg
-// ${svg}
-// \`\`\`
-// ${post}`;
-
-//     fact = code == undefined ? noCodeInFact : codeInFact;
-//   }
-//   return fact;
-// }
-
-// async function handleFigma(interaction: ChatInputCommandInteraction) {
-//   const username = interaction.user.username;
-//   const oldFigmaData = await prisma.figmaData.findFirst({
-//     where: { username },
-//   });
-
-//   const { token, url, description } = await getFigmaOptions(interaction);
-
-//   const newToken = token ?? oldToken;
-
-//   const urlBase = "https://www.figma.com/file/";
-//   let fileId: string;
-//   if (url != undefined) {
-//     if (url.startsWith(urlBase)) {
-//       fileId = url.split("/")[4];
-//     } else {
-//       return await handleInteraction({
-//         interaction,
-//         message: `The url ${url} is invalid. It should be of the form ${urlBase}<fileId>/...`,
-//       });
-//     }
-//   }
-//   const newFileId = fileId ?? oldFigmaData?.fileId;
-
-//   if (newToken === undefined) {
-//     handleInteraction({
-//       interaction,
-//       message: "You need to enter a Figma token.",
-//     });
-//     return; // early return in case token is undefined
-//   }
-
-//   if (newFileId === undefined) {
-//     handleInteraction({
-//       interaction,
-//       message: "You need to enter a Figma url.",
-//     });
-//     return; // early return in case url is undefined
-//   }
-
-//   handleInteraction({ interaction, message: "Saved figma token." });
-// }
-
 async function handleUpdate(interaction: ChatInputCommandInteraction) {
-  let { newFact } = getUpdateOptions(interaction);
+  let { newFact: userInput } = getUpdateOptions(interaction);
 
   const turnObject = await prisma.turn.findFirst({
-    include: { game: true, facts: true, svgData: true },
+    include: {
+      game: true,
+      facts: {
+        include: {
+          image: true,
+        },
+      },
+    },
     where: { game: { channel: interaction.channelId } },
     orderBy: { id: "desc" },
   });
-  const { facts, game, svgData: oldSvgData, turn: oldTurn } = turnObject;
-  const factTexts = facts.map(({ text }) => text);
-  const currentFact = factTexts[factTexts.length - 1];
-  const oldFacts = factTexts.slice(0, factTexts.length - 1);
+  const { facts, game, turn: oldTurn } = turnObject;
+  const currentFact = facts[facts.length - 1];
+  const oldFacts = facts.slice(1, facts.length - 1);
+  const [proposition] = facts;
 
   // const subcommand = interaction.options.getSubcommand();
   // switch (subcommand) {
@@ -643,27 +323,37 @@ async function handleUpdate(interaction: ChatInputCommandInteraction) {
   //   default:
   //     break;
   // }
-  let svgData = null;
-  if (oldSvgData != null) {
+  let image = null;
+  if (currentFact.image != null) {
     const figmaData = await getLastFigmaData(interaction);
     const svg = await getSvg(figmaData);
-    svgData = { svg, description: oldSvgData.description };
+    image = { svg, description: currentFact.image.description };
   }
 
   const { completions, messages, status, turn } = await step({
     coherenceCheck: game.coherenceCheck,
     currentFact,
-    newFact,
+    newFact: { text: userInput, image },
     oldFacts,
-    proposition: game.proposition,
+    proposition,
     turn: oldTurn,
   });
 
   const completionsArray: Completion[] = Object.values(completions).flatMap(
     (c) => c ?? [],
   );
+
+  function createNewFact(text: string, svg: string, description: string) {
+    return {
+      text,
+      create: { svgData: { create: { svg, description } } },
+    };
+  }
+  const newFacts = facts.map(({ text, image: { svg, description } }) =>
+    createNewFact(text, svg, description),
+  );
   if (goToNextTurn(status)) {
-    factTexts.push(newFact);
+    newFacts.push(createNewFact(userInput, image.svg, image.description));
   }
   const newTurnObject = await prisma.turn.create({
     data: {
@@ -671,15 +361,14 @@ async function handleUpdate(interaction: ChatInputCommandInteraction) {
         create: completionsArray,
       },
       facts: {
-        create: factTexts.map((text) => ({ text })),
+        create: newFacts,
       },
       game: {
         connect: { id: game.id },
       },
-      newFact,
+      newFact: userInput,
       player: interaction.user.username,
       status,
-      svgData: null,
       turn,
     },
   });
@@ -697,6 +386,15 @@ async function handleUpdate(interaction: ChatInputCommandInteraction) {
 
   return await handleInteraction({ interaction, message });
 }
+
+function addFigmaDescriptionOption(builder: SlashCommandSubcommandBuilder) {
+  return builder.addStringOption((option) =>
+    option
+      .setName("figma-description")
+      .setDescription("Write a new description of the Figma diagram.")
+      .setRequired(false),
+  );
+}
 // Create commands
 export const Commands = [
   {
@@ -710,7 +408,30 @@ export const Commands = [
         option.setName("url").setDescription("The URL for your figma diagram."),
       ),
     async execute(interaction: ChatInputCommandInteraction) {
-      throw new Error("Not implemented");
+      const { token, url } = await getFigmaOptions(interaction);
+      const figmaUrlBase = "https://www.figma.com/file/";
+      if (!url.startsWith(figmaUrlBase)) {
+        return await handleInteraction({
+          interaction,
+          message: `The URL must start with ${figmaUrlBase}`,
+        });
+      }
+      const fileId = url.split("/")[4];
+      const { iv, content } = encrypt(token);
+      await prisma.figmaData.create({
+        data: {
+          encryptedToken: content,
+          fileId,
+          tokenIV: iv,
+          username: interaction.user.username,
+        },
+      });
+
+      return await handleInteraction({
+        interaction,
+        message: `Submitted figma file id: ${fileId}`,
+        deferred: false,
+      });
     },
   },
   {
@@ -718,32 +439,46 @@ export const Commands = [
       .setName("play")
       .setDescription(`Play break the chain`)
       .addSubcommand((subcommand) =>
-        subcommand
-          .setName(subcommands.start)
-          .setDescription("Start a new game.")
-          .addStringOption((option) =>
-            option
-              .setName("proposition")
-              .setDescription("The target proposition that GPT tries to prove.")
-              .setRequired(false),
-          )
-          .addBooleanOption((option) =>
-            option
-              .setName("coherence-check")
-              .setDescription("Whether to check for coherence.")
-              .setRequired(false),
-          ),
+        addFigmaDescriptionOption(
+          subcommand
+            .setName(subcommands.start)
+            .setDescription("Start a new game.")
+            .addStringOption((option) =>
+              option
+                .setName("proposition")
+                .setDescription(
+                  "The target proposition that GPT tries to prove.",
+                )
+                .setRequired(false),
+            )
+            .addBooleanOption((option) =>
+              option
+                .setName("coherence-check")
+                .setDescription("Whether to check for coherence.")
+                .setRequired(false),
+            )
+            .addBooleanOption((option) =>
+              option
+                .setName("use-figma")
+                .setDescription(
+                  "Whether to incorporate Figma diagram into prompts.",
+                )
+                .setRequired(false),
+            ),
+        ),
       )
       .addSubcommand((subcommand) =>
-        subcommand
-          .setName(subcommands.update)
-          .setDescription("Choose a new set of facts to replace the old set.")
-          .addStringOption((option) =>
-            option
-              .setName("new-facts")
-              .setDescription("The new facts to replace the old ones with.")
-              .setRequired(false),
-          ),
+        addFigmaDescriptionOption(
+          subcommand
+            .setName(subcommands.update)
+            .setDescription("Choose a new set of facts to replace the old set.")
+            .addStringOption((option) =>
+              option
+                .setName("new-facts")
+                .setDescription("The new facts to replace the old ones with.")
+                .setRequired(false),
+            ),
+        ),
       ),
     async execute(interaction: ChatInputCommandInteraction) {
       const subcommand = interaction.options.getSubcommand();
@@ -759,3 +494,10 @@ export const Commands = [
     },
   },
 ];
+function addFigmaToFact(
+  proposition: string,
+  svg: string,
+  description: string,
+): string {
+  throw new Error("Function not implemented.");
+}
