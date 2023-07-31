@@ -1,12 +1,18 @@
+import { kMaxLength } from "buffer";
 import { Completion, complete, gpt } from "./gpt.js";
-import { headerPrefix } from "./text.js";
+import {
+  headerPrefix,
+  lowerCaseFirstLetter,
+  removeFinalPunctuation,
+} from "./text.js";
+import { get } from "http";
 
-type Inferences<Type> = {
+export type Inferences<Type> = {
   oneStep?: Type;
   coherence?: Type;
   multiStep?: Type;
 };
-type Image = {
+export type Image = {
   svg: string;
   description: string;
 };
@@ -71,31 +77,81 @@ function inferenceToBoolean(inference: string) {
   return null;
 }
 
-async function infer(premise: Fact[], conclusion: Fact) {
-  const completions: Completion[] = [];
-  const concludingText = `In conclusion, the proposition is probably [true|false|indeterminate]`;
-  const input = `Consider the following facts: _${premise}_
-Do these facts imply _${conclusion}_? Think through it step by step. When you are done, finish with the text: "${concludingText}"`;
-  const completion = await complete({ input, model: gpt.four });
-  completions.push(completion);
-  let [explanation, inference] = completion.output.split(
-    "In conclusion, the proposition",
-  );
-  if (inference == undefined) {
-    const inferenceCompletion = await complete({
-      input: `${input}
-${explanation}
-
-${concludingText}`,
-      model: gpt.four,
-    });
-    completions.push(inferenceCompletion);
-    inference = inferenceCompletion.output;
+function addIndexToFigures(facts: Fact[], index: number = 0) {
+  const [head, ...tail] = facts;
+  if (head == undefined) {
+    return [];
   }
-  return { inference, completions };
+  const hasImage = head.image != null;
+  index += +hasImage;
+  return [{ fact: head, index }, ...addIndexToFigures(tail, index)];
 }
 
-export function getInferenceSetupText({
+export function getImageText(image: Image, index: number) {
+  const { svg, description } = image;
+  return `\
+\`\`\`svg
+${svg}
+\`\`\`
+Figure ${index}: ${description}
+`;
+}
+
+function getImageTexts(facts: { fact: Fact; index: number }[]) {
+  const [head, ...tail] = facts;
+  if (head == undefined) {
+    return [];
+  }
+  const { fact, index } = head;
+  const { image } = fact;
+  const newTail = getImageTexts(tail);
+  if (image != null) {
+    return [getImageText(image, index), ...newTail];
+  }
+  return newTail;
+}
+
+function getTextReferencingFigure(text: string, index: number) {
+  return `In figure ${index}, ${lowerCaseFirstLetter(text)}`;
+}
+
+export function getFactText(fact: Fact, index: number = null) {
+  console.log("############### fact");
+  console.log(fact);
+  if (fact.image == null) {
+    return fact.text;
+  }
+  return getTextReferencingFigure(fact.text, index);
+}
+
+export function getPremiseTexts(facts: { fact: Fact; index: number }[]) {
+  return facts
+    .map(({ fact, index }) =>
+      fact.image == null ? fact.text : getFactText(fact, index),
+    )
+    .map((text) => (facts.length > 2 ? `* ${text}` : text));
+}
+
+async function retryExtraction(
+  initialInput: string,
+  explanation: string,
+  conclusionText: string,
+) {
+  const input = `${initialInput}
+${explanation}
+Complete this text with "${conclusionText}"`;
+  return await complete({ input, model: gpt.four });
+}
+
+function getImagesText(premises: Fact[], conclusion: Fact) {
+  const indexed = addIndexToFigures([...premises, conclusion]);
+  const imageTexts: string[] = getImageTexts(indexed);
+  return `\
+${imageTexts.length > 1 ? `${headerPrefix} Figures\n` : ""}\
+${imageTexts.join("\n")}`;
+}
+
+export function getSetupText({
   fact,
   proposition,
   factStatus,
@@ -105,10 +161,47 @@ export function getInferenceSetupText({
   proposition: Fact;
 }) {
   return `\
+${getImagesText([fact], proposition)}\
 ${headerPrefix} The facts are${getFactWord(factStatus)}:
-${fact}
+${getFactText(fact, 1)}
 ${headerPrefix} Target Proposition
-_${proposition}_`;
+${getFactText(proposition, 2)}`;
+}
+
+async function infer(premises: Fact[], conclusion: Fact) {
+  const indexed = addIndexToFigures([...premises, conclusion]);
+  const premiseTexts: string[] = getPremiseTexts(indexed.slice(0, -1));
+  const proposition = getFactText(conclusion, indexed.length);
+  const inConclusion = `In conclusion, the proposition`;
+  const conclusionText = `${inConclusion} is probably [true|false|indeterminate]`;
+  const input = `\
+${getImagesText(premises, conclusion)}\
+${headerPrefix} Premise${premiseTexts.length > 1 ? "s" : ""}
+${premiseTexts.join("\n")}
+${headerPrefix} Question
+Assume ${
+    premiseTexts.length > 1 ? "these premises are" : "this premise is"
+  } true. ${
+    premiseTexts.length > 1 ? 'Do these premises"' : "Does this premise"
+  } imply the proposition: _${removeFinalPunctuation(
+    proposition,
+  )}_? Think through it step by step. When you are done, finish with the text: "${conclusionText}"
+`;
+
+  const completions: Completion[] = [];
+  const completion = await complete({ input, model: gpt.four });
+  completions.push(completion);
+  let [explanation, inference] = completion.output.split(inConclusion);
+  if (inference == undefined) {
+    const completion = await retryExtraction(
+      input,
+      explanation,
+      conclusionText,
+    );
+    completions.push(completion);
+    [, inference] = completion.output.split(inConclusion);
+  }
+  return { inference, completions };
 }
 
 async function getInferenceResult({
@@ -145,7 +238,7 @@ export async function step({
 }> {
   const commentsIntro = [
     `${headerPrefix} Proposed new facts`,
-    `_${newFact}_`,
+    `_${newFact.text}_`,
     `${headerPrefix} Result`,
   ];
 
@@ -162,13 +255,13 @@ export async function step({
       ? "You replaced"
       : "You failed to replace";
     const whatYouDid = `\
-${verb}: _${currentFact}_ 
-with: "${newFact}"`;
+${verb}: _${currentFact.text}_ 
+with: "${newFact.text}"`;
     return {
       messages: [
         whatYouDid,
         ...comments,
-        getInferenceSetupText({
+        getSetupText({
           fact: goToNextTurn(status) ? newFact : currentFact,
           proposition,
           factStatus: goToNextTurn(status) ? "updated" : "unchanged",
@@ -202,16 +295,16 @@ with: "${newFact}"`;
       completions: { oneStep: oneStep.completions },
       comments: [
         ...commentsIntro,
-        `The new fact imply _${proposition}_`,
+        `The new facts imply _${proposition.text}_`,
         "The first fact was successfully updated.",
       ],
     });
   }
-  const oneStepComment = `The new facts _${newFact}_`;
+  const oneStepComment = `The new facts _${newFact.text}_`;
   let coherenceCompletions = null;
   if (coherenceCheck) {
     const coherence = await getInferenceResult({
-      premise: [...oldFacts, newFact],
+      premise: [...oldFacts, currentFact, newFact],
       conclusion: proposition,
     });
     if (!coherence.success) {
@@ -244,7 +337,7 @@ with: "${newFact}"`;
     comments: [
       ...commentsIntro,
       oneStepComment,
-      `Taken with all of the existing facts, they also imply the target proposition: _${proposition}_`,
+      `Taken with all of the existing facts, they also imply the target proposition: _${proposition.text}_`,
       multiStep.success
         ? `Your new facts were added but the target proposition still follows from updated facts.`
         : "You broke the chain! GPT couldn't infer the target proposition from the updated facts.",

@@ -10,11 +10,12 @@ import propositions from "./propositions.js";
 import { FigmaData, PrismaClient } from "@prisma/client";
 import { getSvgUrl } from "./figma.js";
 import { encrypt, decrypt } from "./encryption.js";
-import { step, goToNextTurn, getInferenceSetupText } from "./step.js";
+import { Image, step, goToNextTurn, getSetupText } from "./step.js";
 import { negate } from "./text.js";
 import { randomBoolean, randomChoice } from "./math.js";
 import { handleInteraction } from "./interaction.js";
 import { handleThreads } from "./threads.js";
+import { cursorTo } from "readline";
 export const prisma = new PrismaClient();
 
 const subcommands = {
@@ -57,7 +58,7 @@ function getStartOptions(interaction: ChatInputCommandInteraction) {
 
 function getUpdateOptions(interaction: ChatInputCommandInteraction) {
   const newFact = interaction.options.getString("new-facts");
-  const figmaDescription = interaction.options.getBoolean("figma-description");
+  const figmaDescription = interaction.options.getString("figma-description");
   return { newFact, figmaDescription };
 }
 
@@ -97,7 +98,7 @@ async function handleStart(interaction: ChatInputCommandInteraction) {
     proposition = truth ? positiveFact : (await negate(positiveFact)).output;
   }
 
-  let image = undefined;
+  let image: { svg: string; description: string } = undefined;
   if (useFigma) {
     const figmaData = await getLastFigmaData(interaction);
     if (figmaData == null) {
@@ -120,13 +121,12 @@ async function handleStart(interaction: ChatInputCommandInteraction) {
       orderBy: { id: "desc" },
     });
 
-    // If a turnData was found and it has svgData with a description, use it
+    // If a turnData was found and it has Image with a description, use it
     // Otherwise, default to an empty string
     const description = figmaDescription ?? oldFact?.image?.description;
     image = { svg, description };
-
-    proposition = addFigmaToFact(proposition, svg, description);
   }
+
   const game = await prisma.game.create({
     data: {
       channel: interaction.channelId,
@@ -144,10 +144,9 @@ async function handleStart(interaction: ChatInputCommandInteraction) {
   console.log(game);
 
   const fact = { text: proposition, image };
-
   await handleInteraction({
     interaction,
-    message: getInferenceSetupText({
+    message: getSetupText({
       fact,
       factStatus: "initial",
       proposition: fact,
@@ -156,7 +155,7 @@ async function handleStart(interaction: ChatInputCommandInteraction) {
 }
 
 async function handleUpdate(interaction: ChatInputCommandInteraction) {
-  let { newFact: userInput } = getUpdateOptions(interaction);
+  let { newFact: userInput, figmaDescription } = getUpdateOptions(interaction);
 
   const turnObject = await prisma.turn.findFirst({
     include: {
@@ -174,6 +173,9 @@ async function handleUpdate(interaction: ChatInputCommandInteraction) {
   const currentFact = facts[facts.length - 1];
   const oldFacts = facts.slice(1, facts.length - 1);
   const [proposition] = facts;
+  if (userInput == undefined) {
+    userInput = currentFact.text;
+  }
 
   // const subcommand = interaction.options.getSubcommand();
   // switch (subcommand) {
@@ -194,7 +196,8 @@ async function handleUpdate(interaction: ChatInputCommandInteraction) {
   if (currentFact.image != null) {
     const figmaData = await getLastFigmaData(interaction);
     const svg = await getSvg(figmaData);
-    image = { svg, description: currentFact.image.description };
+    const description = figmaDescription ?? currentFact.image.description;
+    image = { svg, description };
   }
 
   const { completions, messages, status, turn } = await step({
@@ -210,18 +213,21 @@ async function handleUpdate(interaction: ChatInputCommandInteraction) {
     (c) => c ?? [],
   );
 
-  function createNewFact(text: string, svg: string, description: string) {
+  function createNewFact(text: string, image: null | Image) {
+    if (image == null) {
+      return { text };
+    }
+    const { svg, description } = image;
     return {
       text,
-      create: { svgData: { create: { svg, description } } },
+      image: { create: { svg, description } },
     };
   }
-  const newFacts = facts.map(({ text, image: { svg, description } }) =>
-    createNewFact(text, svg, description),
-  );
+  const newFacts = facts.map(({ text, image }) => createNewFact(text, image));
   if (goToNextTurn(status)) {
-    newFacts.push(createNewFact(userInput, image.svg, image.description));
+    newFacts.push(createNewFact(userInput, image));
   }
+  console.log(newFacts);
   const newTurnObject = await prisma.turn.create({
     data: {
       completions: {
@@ -294,10 +300,10 @@ export const Commands = [
         },
       });
 
+      await interaction.deferReply();
       return await handleInteraction({
         interaction,
         message: `Submitted figma file id: ${fileId}`,
-        deferred: false,
       });
     },
   },
@@ -361,10 +367,3 @@ export const Commands = [
     },
   },
 ];
-function addFigmaToFact(
-  proposition: string,
-  svg: string,
-  description: string,
-): string {
-  throw new Error("Function not implemented.");
-}

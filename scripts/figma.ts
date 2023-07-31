@@ -51,7 +51,7 @@ export async function getPngUrl(
 
       // Fetch the images
       return await fetch(
-        `https://api.figma.com/v1/images/${key}?ids=${canvasOrPageId}&format=png&svg_include_id=true`,
+        `https://api.figma.com/v1/images/${key}?ids=${canvasOrPageId}&format=png`,
         { headers: { "X-Figma-Token": token } },
       );
     })
@@ -80,7 +80,7 @@ export async function getSvgUrl(
 
       // Fetch the images
       return await fetch(
-        `https://api.figma.com/v1/images/${key}?ids=${canvasOrPageId}&format=svg`,
+        `https://api.figma.com/v1/images/${key}?ids=${canvasOrPageId}&format=svg&svg_include_id=true`,
         { headers: { "X-Figma-Token": token } },
       );
     })

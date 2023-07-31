@@ -24,3 +24,28 @@ export function chunkString(input: string, chunkSize: number): string[] {
         ...chunkString(input.slice(chunkSize), chunkSize),
       ];
 }
+
+export function lowerCaseFirstLetter(inputString: string): string {
+  if (inputString.length === 0) {
+    return inputString; // Return the original string if it's empty
+  }
+
+  const firstLetter = inputString.charAt(0).toLowerCase();
+  const restOfString = inputString.slice(1);
+
+  return firstLetter + restOfString;
+}
+
+export function removeFinalPunctuation(inputString: string): string {
+  // Define the regular expression pattern to match final punctuation
+  const pattern = /[!"#$%&'()*+,-./:;<=>?@[\\\]^_`{|}~]$/;
+
+  // Check if the string ends with punctuation
+  if (pattern.test(inputString)) {
+    // If yes, remove the final punctuation and return the updated string
+    return inputString.slice(0, -1);
+  }
+
+  // If the string does not end with punctuation, return the original string as is
+  return inputString;
+}
