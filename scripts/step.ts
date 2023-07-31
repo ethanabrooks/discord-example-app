@@ -92,9 +92,7 @@ export function getImageText(image: Image, index: number) {
   return `\
 \`\`\`svg
 ${svg}
-\`\`\`
-Figure ${index}: ${description}
-`;
+\`\`\``;
 }
 
 function getImageTexts(facts: { fact: Fact; index: number }[]) {
@@ -162,6 +160,7 @@ export function getSetupText({
 }) {
   return `\
 ${getImagesText([fact], proposition)}\
+${fact.image == null ? "" : "\n" + fact.image.description + "\n"}\
 ${headerPrefix} The facts are${getFactWord(factStatus)}:
 ${getFactText(fact, 1)}
 ${headerPrefix} Target Proposition
@@ -174,8 +173,13 @@ async function infer(premises: Fact[], conclusion: Fact) {
   const proposition = getFactText(conclusion, indexed.length);
   const inConclusion = `In conclusion, the proposition`;
   const conclusionText = `${inConclusion} is probably [true|false|indeterminate]`;
+  const lastPremise = premises[premises.length - 1];
+  console.log("############### lastPremise");
+  console.log(lastPremise);
+  console.log("############### lastPremise");
   const input = `\
 ${getImagesText(premises, conclusion)}\
+${lastPremise.image == null ? "" : "\n" + lastPremise.image.description + "\n"}\
 ${headerPrefix} Premise${premiseTexts.length > 1 ? "s" : ""}
 ${premiseTexts.join("\n")}
 ${headerPrefix} Question
