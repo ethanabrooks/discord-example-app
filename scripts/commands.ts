@@ -47,7 +47,7 @@ function getStartOptions(interaction: ChatInputCommandInteraction) {
   let figmaDescription = interaction.options.getString("figma-description");
   let useFigma = interaction.options.getBoolean("use-figma");
   if (useFigma == undefined) {
-    useFigma = false;
+    useFigma = true;
   }
   let coherenceCheck = interaction.options.getBoolean("coherence-check");
   if (coherenceCheck == undefined) {
