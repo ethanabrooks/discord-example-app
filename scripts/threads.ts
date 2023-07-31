@@ -1,6 +1,10 @@
 import { TextChannel } from "discord.js";
 import { Completion } from "./gpt.js";
-import { BUILT_IN_RESPONSE_LIMIT, chunkString } from "./text.js";
+import {
+  BUILT_IN_RESPONSE_LIMIT,
+  chunkString,
+  whitespaceOnly,
+} from "./text.js";
 import { Inferences } from "./step.js";
 
 const threadNames: Inferences<string> = {
@@ -34,7 +38,7 @@ ${output}
         autoArchiveDuration: 60,
       });
       chunkString(text, BUILT_IN_RESPONSE_LIMIT).forEach(async (chunk) => {
-        return await thread.send(chunk);
+        if (!whitespaceOnly(chunk)) return await thread.send(chunk);
       });
     });
 }

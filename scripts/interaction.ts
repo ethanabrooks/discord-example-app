@@ -15,7 +15,7 @@ import {
 import { buttons } from "./buttons.js";
 import { Stream } from "form-data";
 import catchError from "./errors.js";
-import { splitAtResponseLimit } from "./text.js";
+import { splitAtResponseLimit, whitespaceOnly } from "./text.js";
 
 export async function handleInteraction({
   interaction,
@@ -56,8 +56,9 @@ export async function handleInteraction({
         .awaitMessageComponent()
         .then(async (buttonInteraction: ButtonInteraction) => {
           async function acknowledgeAndremoveButtons() {
-            const content =
-              reply.content.length > 0 ? reply.content : "Content was empty"; // this is necessary because of an annoying error that gets thrown when you try to update a message with no content
+            const content = whitespaceOnly(reply.content)
+              ? "Content was empty"
+              : reply.content; // this is necessary because of an annoying error that gets thrown when you try to send a message with whitespace only
             await buttonInteraction.update({
               content,
               components: [],

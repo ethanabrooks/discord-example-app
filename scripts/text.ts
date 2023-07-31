@@ -49,3 +49,8 @@ export function removeFinalPunctuation(inputString: string): string {
   // If the string does not end with punctuation, return the original string as is
   return inputString;
 }
+
+export function whitespaceOnly(message: string) {
+  let whitespaceRegex = /^\s*$/;
+  return whitespaceRegex.test(message);
+}
