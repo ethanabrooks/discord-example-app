@@ -252,12 +252,9 @@ export async function step({
     completions: Inferences<Completion[]>;
     comments: string[];
   }) {
-    const verb = goToNextTurn(status)
-      ? "You replaced"
-      : "You failed to replace";
-    const whatYouDid = `\
-${verb}: _${currentFact.text}_ 
-with: "${newFact.text}"`;
+    const whatYouDid = `Proposed new facts were ${
+      goToNextTurn(status) ? "accepted" : "rejected"
+    }.`;
     return {
       messages: [
         whatYouDid,
