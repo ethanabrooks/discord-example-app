@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction } from "discord.js";
+import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 import { prisma } from "../utils/prismaClient.js";
 import { handleInteraction } from "../interaction.js";
 
@@ -18,9 +18,7 @@ export function invalidCustomCheck(check: string) {
   return null;
 }
 
-export default async function handleCustomCheck(
-  interaction: ChatInputCommandInteraction,
-) {
+async function handleCustomCheck(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply();
   const username = interaction.user.username;
   const { check } = await getCustomCheckOptions(interaction);
@@ -34,3 +32,19 @@ export default async function handleCustomCheck(
   ${JSON.stringify(data, null, 2)}`;
   return await handleInteraction({ interaction, message });
 }
+
+export default {
+  data: new SlashCommandBuilder()
+    .setName("custom-check")
+    .setDescription(`Design a custom check for GPT to use on each proposition`)
+    .addStringOption((option) =>
+      option
+        .setName("check")
+        .setDescription(
+          "The check. Use <a>, <b>, <c> to refer to target proposition, current fact, new fact respectively.",
+        ),
+    ),
+  async execute(interaction: ChatInputCommandInteraction) {
+    return await handleCustomCheck(interaction);
+  },
+};

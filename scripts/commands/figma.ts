@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction } from "discord.js";
+import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 import { handleInteraction } from "../interaction.js";
 import { prisma } from "../utils/prismaClient.js";
 import { encrypt } from "../utils/encryption.js";
@@ -23,9 +23,7 @@ export async function getFigmaData(username: string) {
   });
 }
 
-export default async function handleFigma(
-  interaction: ChatInputCommandInteraction,
-) {
+async function handleFigma(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply();
   const { token, url } = await getFigmaOptions(interaction);
   const figmaUrlBase = "https://www.figma.com/file/";
@@ -77,3 +75,17 @@ export default async function handleFigma(
     return await handleInteraction({ interaction, message });
   }
 }
+export default {
+  data: new SlashCommandBuilder()
+    .setName("figma")
+    .setDescription(`Submit figma data`)
+    .addStringOption((option) =>
+      option.setName("token").setDescription("Your figma dev token."),
+    )
+    .addStringOption((option) =>
+      option.setName("url").setDescription("The URL for your figma diagram."),
+    ),
+  async execute(interaction: ChatInputCommandInteraction) {
+    return await handleFigma(interaction);
+  },
+};

@@ -2,6 +2,7 @@ import fetch from "node-fetch";
 import catchError from "./errors.js";
 import { FigmaData } from "@prisma/client";
 import { decrypt } from "./encryption.js";
+import { SlashCommandSubcommandBuilder } from "discord.js";
 
 interface FigmaNode {
   id: string;
@@ -108,4 +109,15 @@ export async function getSvg(figmaData: FigmaData): Promise<string | void> {
   return await fetch(svgUrl)
     .then((response) => response.text())
     .catch(catchError);
+}
+
+export function addFigmaDescriptionOption(
+  builder: SlashCommandSubcommandBuilder,
+) {
+  return builder.addStringOption((option) =>
+    option
+      .setName("figma-description")
+      .setDescription("Write a new description of the Figma diagram.")
+      .setRequired(false),
+  );
 }

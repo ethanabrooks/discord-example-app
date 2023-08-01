@@ -9,9 +9,14 @@ import {
   REST,
   Routes,
 } from "discord.js";
-import Commands from "./commands.js";
 import { createLogger } from "./utils/logger.js";
 import { prisma } from "./utils/prismaClient.js";
+import customCheckCommand from "./commands/customCheck.js";
+import figmaCommand from "./commands/figma.js";
+import playCommand from "./commands/play.js";
+
+// Create commands
+const commands = [customCheckCommand, figmaCommand, playCommand];
 
 export default class MyClient extends Client {
   commands: Collection<any, any>; // use correct type :)
@@ -31,7 +36,7 @@ const guildId = process.env.GUILD_ID;
 client.login(token);
 
 // Register commands
-for (const command of Commands) {
+for (const command of commands) {
   // Set a new item in the Collection with the key as the command name and the value as the exported module
   if ("data" in command && "execute" in command) {
     client.commands.set(command.data.name, command);
@@ -83,9 +88,9 @@ const rest = new REST().setToken(token);
 async function main() {
   try {
     console.log(
-      `Started refreshing ${Commands.length} application (/) commands.`,
+      `Started refreshing ${commands.length} application (/) commands.`,
     );
-    const json_commands = Commands.map((command) => command.data.toJSON());
+    const json_commands = commands.map((command) => command.data.toJSON());
 
     // The put method is used to fully refresh all commands in the guild with the current set
     const data = (await rest.put(
