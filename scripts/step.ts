@@ -111,8 +111,6 @@ function getTextReferencingFigure(text: string, index: number) {
 }
 
 export function getFactText(fact: Fact, index: number = null) {
-  console.log("############### fact");
-  console.log(fact);
   if (fact.image == null) {
     return fact.text;
   }
@@ -174,9 +172,6 @@ async function infer(premises: Fact[], conclusion: Fact) {
   const premiseTexts: string[] = getPremiseTexts(indexed.slice(0, -1));
   const proposition = getFactText(conclusion, indexed.length);
   const lastPremise = premises[premises.length - 1];
-  console.log("############### lastPremise");
-  console.log(lastPremise);
-  console.log("############### lastPremise");
   const input = `\
 ${getImagesText(premises, conclusion)}\
 ${lastPremise.image == null ? "" : "\n" + lastPremise.image.description + "\n"}\
