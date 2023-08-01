@@ -8,18 +8,12 @@ import { FigmaData } from "@prisma/client";
 import { decrypt } from "../../utils/encryption.js";
 import { getSvgUrl } from "../../utils/figma.js";
 import catchError from "../../utils/errors.js";
+import { getFigmaData } from "../figma.js";
 
 function getUpdateOptions(interaction: ChatInputCommandInteraction) {
   const newFact = interaction.options.getString("new-facts");
   const figmaDescription = interaction.options.getString("figma-description");
   return { newFact, figmaDescription };
-}
-
-async function getLastFigmaData(interaction: ChatInputCommandInteraction) {
-  return await prisma.figmaData.findFirst({
-    where: { username: interaction.user.username },
-    orderBy: { id: "desc" },
-  });
 }
 
 async function getSvg(figmaData: FigmaData): Promise<string | void> {
@@ -76,7 +70,7 @@ export default async function handleUpdate(
   // }
   let image = null;
   if (currentFact.image != null) {
-    const figmaData = await getLastFigmaData(interaction);
+    const figmaData = await getFigmaData(interaction.user.username);
     const svg = await getSvg(figmaData);
     const description = figmaDescription ?? currentFact.image.description;
     image = { svg, description };
