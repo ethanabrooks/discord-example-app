@@ -280,14 +280,43 @@ with: "${newFact.text}"`;
     };
   }
 
+  const completions: Inferences<Completion[]> = {};
+
+  if (customCheck != null) {
+    const input = customCheck.check
+      .replace(/<a>/gi, proposition.text)
+      .replace(/<b>/gi, currentFact.text)
+      .replace(/<c>/gi, newFact.text);
+
+    const { input: gptInput, output } = await complete({
+      model: gpt.four,
+      input,
+    });
+    const success = inferenceToBoolean(output);
+    completions.custom = [{ input: gptInput, output }];
+    if (!success) {
+      return turnResult({
+        status: "try again",
+        completions,
+        comments: [
+          ...commentsIntro,
+          `The custom check:
+> ${input}
+did not pass.`,
+        ],
+      });
+    }
+  }
+
   const oneStep = await getInferenceResult({
     premise: [newFact],
     conclusion: currentFact,
   });
+  completions.oneStep = oneStep.completions;
   if (!oneStep.success) {
     return turnResult({
       status: "try again",
-      completions: { oneStep: oneStep.completions },
+      completions,
       comments: [
         ...commentsIntro,
         "The new facts did not imply the replaced fact.",
@@ -298,7 +327,7 @@ with: "${newFact.text}"`;
   if (turn == 0) {
     return turnResult({
       status: "continue",
-      completions: { oneStep: oneStep.completions },
+      completions,
       comments: [
         ...commentsIntro,
         `The new facts imply _${proposition.text}_`,
@@ -306,73 +335,35 @@ with: "${newFact.text}"`;
       ],
     });
   }
+
   const oneStepComment = `The new facts _${newFact.text}_`;
-  let coherenceCompletions = null;
   if (coherenceCheck) {
     const coherence = await getInferenceResult({
       premise: [...oldFacts, currentFact, newFact],
       conclusion: proposition,
     });
+    completions.coherence = coherence.completions;
     if (!coherence.success) {
       return turnResult({
         status: "try again",
-        completions: {
-          oneStep: oneStep.completions,
-          coherence: coherence.completions,
-        },
+        completions,
         comments: [
           ...commentsIntro,
           `${oneStepComment}. However, taken with all of the existing facts, they do not imply the proposition. The proposed facts were rejected.`,
         ],
       });
     }
-    coherenceCompletions = coherence.completions;
   }
 
-  let customCompletions = null;
-  if (customCheck != null) {
-    const input = customCheck.check
-      .replace("<a>", proposition.text)
-      .replace("<b>", currentFact.text)
-      .replace("<c>", newFact.text);
-
-    const { input: gptInput, output } = await complete({
-      model: gpt.four,
-      input,
-    });
-    const [, inference] = output.split(inConclusion);
-    const success = inferenceToBoolean(inference);
-    if (!success) {
-      return turnResult({
-        status: "try again",
-        completions: {
-          oneStep: oneStep.completions,
-          coherence: coherenceCompletions,
-          custom: customCompletions,
-        },
-        comments: [
-          ...commentsIntro,
-          `The custom check:
-> ${customCheck}
-did not pass.`,
-        ],
-      });
-    }
-    customCompletions = [{ input: gptInput, output, success }];
-  }
   const multiStep = await getInferenceResult({
     premise: [newFact],
     conclusion: proposition,
   });
   const status = multiStep.success ? "continue" : "win";
+  completions.multiStep = multiStep.completions;
   return turnResult({
     status,
-    completions: {
-      oneStep: oneStep.completions,
-      coherence: coherenceCompletions,
-      custom: customCompletions,
-      multiStep: multiStep.completions,
-    },
+    completions,
     comments: [
       ...commentsIntro,
       oneStepComment,

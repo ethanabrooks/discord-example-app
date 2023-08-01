@@ -8,9 +8,10 @@ import {
 import { Inferences } from "./step.js";
 
 const threadNames: Inferences<string> = {
-  oneStep: "Reasoning for replacement inference",
   coherence: "Reasoning for coherence inference",
+  custom: "Reasoning for custom check",
   multiStep: "Reasoning for chain inference",
+  oneStep: "Reasoning for replacement inference",
 };
 
 export async function handleThreads(

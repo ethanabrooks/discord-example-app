@@ -14,7 +14,7 @@ function getStartOptions(interaction: ChatInputCommandInteraction) {
   let figmaDescription = interaction.options.getString("figma-description");
   let useFigma = interaction.options.getBoolean("use-figma");
   if (useFigma == undefined) {
-    useFigma = true;
+    useFigma = false;
   }
   let coherenceCheck = interaction.options.getBoolean("coherence-check");
   if (coherenceCheck == undefined) {
@@ -100,7 +100,12 @@ export default async function handleStart(
         message: `You need to submit custom check data. Run \`/custom-check\``,
       });
     } else {
-      data["check"] = customCheckData.check;
+      data["customCheck"] = {
+        create: {
+          check: customCheckData.check,
+          username: interaction.user.username,
+        },
+      };
     }
   }
 

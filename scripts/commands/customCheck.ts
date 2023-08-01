@@ -1,7 +1,6 @@
 import { ChatInputCommandInteraction } from "discord.js";
 import { prisma } from "../utils/prismaClient.js";
 import { handleInteraction } from "../interaction.js";
-import { inConclusion } from "../text.js";
 
 export async function getCustomCheckData(username: string) {
   return await prisma.customCheck.findFirst({
@@ -16,10 +15,7 @@ async function getCustomCheckOptions(interaction: ChatInputCommandInteraction) {
 }
 
 export function invalidCustomCheck(check: string) {
-  const valid = check.includes(inConclusion);
-  if (!valid) {
-    return `**Error:** your custom check must include the phrase "${inConclusion}." Rerun \`/customCheck\` with a valid check.`;
-  }
+  return null;
 }
 
 export default async function handleCustomCheck(
