@@ -1,0 +1,96 @@
+import { ChatInputCommandInteraction } from "discord.js";
+import { prisma } from "../../utils/prismaClient.js";
+import { randomBoolean, randomChoice } from "../../utils/math.js";
+import { negate } from "../../text.js";
+import propositions from "../../propositions.js";
+import { handleInteraction } from "../../interaction.js";
+import { getSetupText } from "../../step.js";
+
+function getStartOptions(interaction: ChatInputCommandInteraction) {
+  let proposition = interaction.options.getString("proposition");
+  let figmaDescription = interaction.options.getString("figma-description");
+  let useFigma = interaction.options.getBoolean("use-figma");
+  if (useFigma == undefined) {
+    useFigma = true;
+  }
+  let coherenceCheck = interaction.options.getBoolean("coherence-check");
+  if (coherenceCheck == undefined) {
+    coherenceCheck = false;
+  }
+  return { proposition, coherenceCheck, useFigma, figmaDescription };
+}
+
+export default async function handleStart(
+  interaction: ChatInputCommandInteraction,
+) {
+  let { coherenceCheck, figmaDescription, proposition, useFigma } =
+    getStartOptions(interaction);
+  const truth = randomBoolean();
+  if (proposition == undefined) {
+    const positiveFact = `${randomChoice(propositions)}.`;
+    proposition = truth ? positiveFact : (await negate(positiveFact)).output;
+  }
+
+  let image: { svg: string; description: string } = undefined;
+  if (useFigma) {
+    const figmaData = await getLastFigmaData(interaction);
+    if (figmaData == null) {
+      return await handleInteraction({
+        interaction,
+        message: `You need to submit figma data. Run \`/figma\``,
+      });
+    }
+    const svg = await getSvg(figmaData);
+    if (typeof svg !== "string") {
+      return await handleInteraction({
+        interaction,
+        message: `Couldn't get svg data from Figma`,
+      });
+    }
+    // Retrieve the description from the most recent turn data
+    const oldFact = await prisma.fact.findFirst({
+      include: { image: true },
+      where: { turn: { game: { channel: interaction.channelId } } },
+      orderBy: { id: "desc" },
+    });
+
+    // If a turnData was found and it has Image with a description, use it
+    // Otherwise, default to an empty string
+    const description = figmaDescription ?? oldFact?.image?.description;
+    image = { svg, description };
+  }
+
+  const game = await prisma.game.create({
+    data: {
+      channel: interaction.channelId,
+      coherenceCheck,
+      turns: {
+        create: {
+          facts: { create: { text: proposition, image: { create: image } } },
+          player: interaction.user.username,
+          status: "initial",
+          turn: 0,
+        },
+      },
+    },
+  });
+  console.log(game);
+
+  const fact = { text: proposition, image };
+  await handleInteraction({
+    interaction,
+    message: getSetupText({
+      fact,
+      factStatus: "initial",
+      proposition: fact,
+    }),
+  });
+}
+function getLastFigmaData(
+  interaction: ChatInputCommandInteraction<import("discord.js").CacheType>,
+) {
+  throw new Error("Function not implemented.");
+}
+function getSvg(figmaData: void) {
+  throw new Error("Function not implemented.");
+}

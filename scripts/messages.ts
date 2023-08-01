@@ -1,5 +1,5 @@
 import { Collection, CommandInteraction, Message } from "discord.js";
-import { createChatCompletionWithBackoff } from "./gpt.js";
+import { createChatCompletionWithBackoff } from "./utils/gpt.js";
 import { ChatCompletionRequestMessage } from "openai";
 import { Logger } from "pino";
 import get from "axios";

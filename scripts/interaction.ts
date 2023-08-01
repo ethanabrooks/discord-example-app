@@ -14,7 +14,7 @@ import {
 } from "discord.js";
 import { buttons } from "./buttons.js";
 import { Stream } from "form-data";
-import catchError from "./errors.js";
+import catchError from "./utils/errors.js";
 import { splitAtResponseLimit, whitespaceOnly } from "./text.js";
 
 export async function handleInteraction({

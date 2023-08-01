@@ -1,4 +1,4 @@
-import { complete, gpt } from "./gpt.js";
+import { complete, gpt } from "./utils/gpt.js";
 
 export const headerPrefix = "###";
 export const BUILT_IN_RESPONSE_LIMIT = 2000;

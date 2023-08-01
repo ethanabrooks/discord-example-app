@@ -9,9 +9,9 @@ import {
   REST,
   Routes,
 } from "discord.js";
-import { Commands } from "./commands.js";
-import { createLogger } from "./logger.js";
-import { prisma } from "./prismaClient.js";
+import Commands from "./commands.js";
+import { createLogger } from "./utils/logger.js";
+import { prisma } from "./utils/prismaClient.js";
 
 export default class MyClient extends Client {
   commands: Collection<any, any>; // use correct type :)

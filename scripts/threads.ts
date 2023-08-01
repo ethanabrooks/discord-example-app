@@ -1,5 +1,5 @@
 import { TextChannel } from "discord.js";
-import { Completion } from "./gpt.js";
+import { Completion } from "./utils/gpt.js";
 import {
   BUILT_IN_RESPONSE_LIMIT,
   chunkString,

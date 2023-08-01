@@ -1,11 +1,5 @@
-import { kMaxLength } from "buffer";
-import { Completion, complete, gpt } from "./gpt.js";
-import {
-  headerPrefix,
-  lowerCaseFirstLetter,
-  removeFinalPunctuation,
-} from "./text.js";
-import { get } from "http";
+import { Completion, complete, gpt } from "./utils/gpt.js";
+import { headerPrefix, removeFinalPunctuation } from "./text.js";
 
 export type Inferences<Type> = {
   oneStep?: Type;
