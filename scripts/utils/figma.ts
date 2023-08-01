@@ -1,5 +1,7 @@
 import fetch from "node-fetch";
 import catchError from "./errors.js";
+import { FigmaData } from "@prisma/client";
+import { decrypt } from "./encryption.js";
 
 interface FigmaNode {
   id: string;
@@ -94,4 +96,16 @@ export async function getSvgUrl(
       catchError(err);
       return null;
     });
+}
+
+export async function getSvg(figmaData: FigmaData): Promise<string | void> {
+  // Decrypt the token from the retrieved figmaData
+  const { fileId, encryptedToken, tokenIV } = figmaData;
+  const token = decrypt({ iv: tokenIV, content: encryptedToken });
+
+  // Get the svg url with the file ID and decrypted token
+  const svgUrl = await getSvgUrl(fileId, token);
+  return await fetch(svgUrl)
+    .then((response) => response.text())
+    .catch(catchError);
 }

@@ -6,7 +6,7 @@ import { handleThreads } from "../../threads.js";
 import { handleInteraction } from "../../interaction.js";
 import { FigmaData } from "@prisma/client";
 import { decrypt } from "../../utils/encryption.js";
-import { getSvgUrl } from "../../utils/figma.js";
+import { getSvg, getSvgUrl } from "../../utils/figma.js";
 import catchError from "../../utils/errors.js";
 import { getFigmaData } from "../figma.js";
 
@@ -14,18 +14,6 @@ function getUpdateOptions(interaction: ChatInputCommandInteraction) {
   const newFact = interaction.options.getString("new-facts");
   const figmaDescription = interaction.options.getString("figma-description");
   return { newFact, figmaDescription };
-}
-
-async function getSvg(figmaData: FigmaData): Promise<string | void> {
-  // Decrypt the token from the retrieved figmaData
-  const { fileId, encryptedToken, tokenIV } = figmaData;
-  const token = decrypt({ iv: tokenIV, content: encryptedToken });
-
-  // Get the svg url with the file ID and decrypted token
-  const svgUrl = await getSvgUrl(fileId, token);
-  return await fetch(svgUrl)
-    .then((response) => response.text())
-    .catch(catchError);
 }
 
 export default async function handleUpdate(

@@ -5,6 +5,8 @@ import { negate } from "../../text.js";
 import propositions from "../../propositions.js";
 import { handleInteraction } from "../../interaction.js";
 import { getSetupText } from "../../step.js";
+import { getFigmaData } from "../figma.js";
+import { getSvg, getSvgUrl } from "../../utils/figma.js";
 
 function getStartOptions(interaction: ChatInputCommandInteraction) {
   let proposition = interaction.options.getString("proposition");
@@ -43,7 +45,7 @@ export default async function handleStart(
 
   let image: { svg: string; description: string } = undefined;
   if (useFigma) {
-    const figmaData = await getLastFigmaData(interaction);
+    const figmaData = await getFigmaData(interaction.user.username);
     if (figmaData == null) {
       return await handleInteraction({
         interaction,
@@ -95,12 +97,4 @@ export default async function handleStart(
       proposition: fact,
     }),
   });
-}
-function getLastFigmaData(
-  interaction: ChatInputCommandInteraction<import("discord.js").CacheType>,
-) {
-  throw new Error("Function not implemented.");
-}
-function getSvg(figmaData: void) {
-  throw new Error("Function not implemented.");
 }
