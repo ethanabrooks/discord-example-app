@@ -98,7 +98,7 @@ export default [
               option
                 .setName("new-facts")
                 .setDescription("The new facts to replace the old ones with.")
-                .setRequired(false),
+                .setRequired(true),
             ),
         ),
       ),
