@@ -11,17 +11,18 @@ datasource db {
 }
 
 model CustomCheck {
-  username       String @unique @id
-  check         String
+  id          Int    @id @default(autoincrement())
+  username    String
+  check       String
+  Game        Game[]
 }
 
 model FigmaData {
-  username       String @unique @id
+  username       String @id @unique
   fileId         String
   encryptedToken String // this is the encrypted token content
   tokenIV        String // this is the initialization vector (IV) for the token
 }
-
 
 model Image {
   id          Int     @id @default(autoincrement())
@@ -64,10 +65,12 @@ model Turn {
 }
 
 model Game {
-  id             Int     @id @default(autoincrement())
+  id             Int          @id @default(autoincrement())
   turns          Turn[]
   channel        String
   coherenceCheck Boolean
-  Fact           Fact?   @relation(fields: [factId], references: [id])
+  customCheck    CustomCheck? @relation(fields: [customCheckId], references: [id])
+  customCheckId  Int?
+  Fact           Fact?        @relation(fields: [factId], references: [id])
   factId         Int?
 }

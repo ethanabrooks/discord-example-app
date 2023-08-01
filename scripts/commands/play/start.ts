@@ -7,6 +7,7 @@ import { handleInteraction } from "../../interaction.js";
 import { getSetupText } from "../../step.js";
 import { getFigmaData } from "../figma.js";
 import { getSvg, getSvgUrl } from "../../utils/figma.js";
+import { getCustomCheckData } from "../customCheck.js";
 
 function getStartOptions(interaction: ChatInputCommandInteraction) {
   let proposition = interaction.options.getString("proposition");
@@ -19,14 +20,14 @@ function getStartOptions(interaction: ChatInputCommandInteraction) {
   if (coherenceCheck == undefined) {
     coherenceCheck = false;
   }
-  let customCheck = interaction.options.getBoolean("custom-check");
-  if (customCheck == undefined) {
-    customCheck = false;
+  let useCustomCheck = interaction.options.getBoolean("custom-check");
+  if (useCustomCheck == undefined) {
+    useCustomCheck = false;
   }
   return {
     proposition,
     coherenceCheck,
-    customCheck,
+    useCustomCheck,
     useFigma,
     figmaDescription,
   };
@@ -35,8 +36,13 @@ function getStartOptions(interaction: ChatInputCommandInteraction) {
 export default async function handleStart(
   interaction: ChatInputCommandInteraction,
 ) {
-  let { coherenceCheck, customCheck, figmaDescription, proposition, useFigma } =
-    getStartOptions(interaction);
+  let {
+    coherenceCheck,
+    useCustomCheck,
+    figmaDescription,
+    proposition,
+    useFigma,
+  } = getStartOptions(interaction);
   const truth = randomBoolean();
   if (proposition == undefined) {
     const positiveFact = `${randomChoice(propositions)}.`;
@@ -72,20 +78,33 @@ export default async function handleStart(
     image = { svg, description };
   }
 
-  const game = await prisma.game.create({
-    data: {
-      channel: interaction.channelId,
-      coherenceCheck,
-      turns: {
-        create: {
-          facts: { create: { text: proposition, image: { create: image } } },
-          player: interaction.user.username,
-          status: "initial",
-          turn: 0,
-        },
+  const data = {
+    channel: interaction.channelId,
+    coherenceCheck,
+
+    turns: {
+      create: {
+        facts: { create: { text: proposition, image: { create: image } } },
+        player: interaction.user.username,
+        status: "initial",
+        turn: 0,
       },
     },
-  });
+  };
+
+  if (useCustomCheck) {
+    const customCheckData = await getCustomCheckData(interaction.user.username);
+    if (customCheckData == null) {
+      return await handleInteraction({
+        interaction,
+        message: `You need to submit custom check data. Run \`/custom-check\``,
+      });
+    } else {
+      data["check"] = customCheckData.check;
+    }
+  }
+
+  const game = await prisma.game.create({ data });
   console.log(game);
 
   const fact = { text: proposition, image };

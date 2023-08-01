@@ -1,9 +1,11 @@
 import { Completion, complete, gpt } from "./utils/gpt.js";
-import { headerPrefix, removeFinalPunctuation } from "./text.js";
+import { headerPrefix, inConclusion, removeFinalPunctuation } from "./text.js";
+import { CustomCheck } from "@prisma/client";
 
 export type Inferences<Type> = {
   oneStep?: Type;
   coherence?: Type;
+  custom?: Type;
   multiStep?: Type;
 };
 export type Image = {
@@ -162,12 +164,15 @@ ${headerPrefix} Target Proposition
 ${getFactText(proposition, 2)}`;
 }
 
+function conclusionText(proposition: string | null = null) {
+  proposition = proposition == null ? "" : `_${proposition}_ `;
+  return `${inConclusion} ${proposition}is probably [true|false|indeterminate]`;
+}
+
 async function infer(premises: Fact[], conclusion: Fact) {
   const indexed = addIndexToFigures([...premises, conclusion]);
   const premiseTexts: string[] = getPremiseTexts(indexed.slice(0, -1));
   const proposition = getFactText(conclusion, indexed.length);
-  const inConclusion = `In conclusion, the proposition`;
-  const conclusionText = `${inConclusion} is probably [true|false|indeterminate]`;
   const lastPremise = premises[premises.length - 1];
   console.log("############### lastPremise");
   console.log(lastPremise);
@@ -184,7 +189,7 @@ Assume ${
     premiseTexts.length > 1 ? 'Do these premises"' : "Does this premise"
   } imply the proposition: _${removeFinalPunctuation(
     proposition,
-  )}_? Think through it step by step. When you are done, finish with the text: "${conclusionText}"
+  )}_? Think through it step by step. When you are done, finish with the text: "${conclusionText()}"
 `;
 
   const completions: Completion[] = [];
@@ -195,7 +200,7 @@ Assume ${
     const completion = await retryExtraction(
       input,
       explanation,
-      conclusionText,
+      conclusionText(),
     );
     completions.push(completion);
     [, inference] = completion.output.split(inConclusion);
@@ -218,6 +223,7 @@ async function getInferenceResult({
 export async function step({
   coherenceCheck,
   currentFact,
+  customCheck,
   newFact,
   oldFacts,
   proposition,
@@ -225,6 +231,7 @@ export async function step({
 }: {
   coherenceCheck: boolean;
   currentFact: Fact;
+  customCheck: CustomCheck | null;
   newFact: Fact;
   oldFacts: Fact[];
   proposition: Fact;
@@ -321,6 +328,38 @@ with: "${newFact.text}"`;
     }
     coherenceCompletions = coherence.completions;
   }
+
+  let customCompletions = null;
+  if (customCheck != null) {
+    const input = customCheck.check
+      .replace("<a>", proposition.text)
+      .replace("<b>", currentFact.text)
+      .replace("<c>", newFact.text);
+
+    const { input: gptInput, output } = await complete({
+      model: gpt.four,
+      input,
+    });
+    const [, inference] = output.split(inConclusion);
+    const success = inferenceToBoolean(inference);
+    if (!success) {
+      return turnResult({
+        status: "try again",
+        completions: {
+          oneStep: oneStep.completions,
+          coherence: coherenceCompletions,
+          custom: customCompletions,
+        },
+        comments: [
+          ...commentsIntro,
+          `The custom check:
+> ${customCheck}
+did not pass.`,
+        ],
+      });
+    }
+    customCompletions = [{ input: gptInput, output, success }];
+  }
   const multiStep = await getInferenceResult({
     premise: [newFact],
     conclusion: proposition,
@@ -331,6 +370,7 @@ with: "${newFact.text}"`;
     completions: {
       oneStep: oneStep.completions,
       coherence: coherenceCompletions,
+      custom: customCompletions,
       multiStep: multiStep.completions,
     },
     comments: [

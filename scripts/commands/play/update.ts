@@ -4,11 +4,9 @@ import { goToNextTurn, step, Image } from "../../step.js";
 import { Completion } from "../../utils/gpt.js";
 import { handleThreads } from "../../threads.js";
 import { handleInteraction } from "../../interaction.js";
-import { FigmaData } from "@prisma/client";
-import { decrypt } from "../../utils/encryption.js";
-import { getSvg, getSvgUrl } from "../../utils/figma.js";
-import catchError from "../../utils/errors.js";
+import { getSvg } from "../../utils/figma.js";
 import { getFigmaData } from "../figma.js";
+import { invalidCustomCheck } from "../customCheck.js";
 
 function getUpdateOptions(interaction: ChatInputCommandInteraction) {
   const newFact = interaction.options.getString("new-facts");
@@ -23,11 +21,13 @@ export default async function handleUpdate(
 
   const turnObject = await prisma.turn.findFirst({
     include: {
-      game: true,
       facts: {
         include: {
           image: true,
         },
+      },
+      game: {
+        include: { customCheck: true },
       },
     },
     where: { game: { channel: interaction.channelId } },
@@ -64,9 +64,20 @@ export default async function handleUpdate(
     image = { svg, description };
   }
 
+  if (game.customCheck != null) {
+    const invalid = invalidCustomCheck(game.customCheck.check);
+    if (invalid != null) {
+      return await handleInteraction({
+        interaction,
+        message: invalid,
+      });
+    }
+  }
+
   const { completions, messages, status, turn } = await step({
     coherenceCheck: game.coherenceCheck,
     currentFact,
+    customCheck: game.customCheck,
     newFact: { text: userInput, image },
     oldFacts,
     proposition,

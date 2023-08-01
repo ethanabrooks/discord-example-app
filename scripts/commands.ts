@@ -99,6 +99,12 @@ export default [
             )
             .addBooleanOption((option) =>
               option
+                .setName("custom-check")
+                .setDescription("Whether to use the current custom check.")
+                .setRequired(false),
+            )
+            .addBooleanOption((option) =>
+              option
                 .setName("use-figma")
                 .setDescription(
                   "Whether to incorporate Figma diagram into prompts.",

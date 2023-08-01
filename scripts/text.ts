@@ -54,3 +54,5 @@ export function whitespaceOnly(message: string) {
   let whitespaceRegex = /^\s*$/;
   return whitespaceRegex.test(message);
 }
+
+export const inConclusion = `In conclusion, the proposition`;
