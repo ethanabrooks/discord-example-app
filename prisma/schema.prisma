@@ -10,12 +10,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model CustomCheck {
+  username       String @unique @id
+  check         String
+}
+
 model FigmaData {
   username       String @unique @id
   fileId         String
   encryptedToken String // this is the encrypted token content
   tokenIV        String // this is the initialization vector (IV) for the token
 }
+
 
 model Image {
   id          Int     @id @default(autoincrement())

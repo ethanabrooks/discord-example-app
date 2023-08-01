@@ -6,6 +6,7 @@ import {
 import handleUpdate from "./commands/play/update.js";
 import handleStart from "./commands/play/start.js";
 import handleFigma from "./commands/figma.js";
+import handleCustomCheck from "./commands/customCheck.js";
 
 const subcommands = {
   // add: "add",
@@ -42,6 +43,23 @@ function addFigmaDescriptionOption(builder: SlashCommandSubcommandBuilder) {
 }
 // Create commands
 export default [
+  {
+    data: new SlashCommandBuilder()
+      .setName("custom-check")
+      .setDescription(
+        `Design a custom check for GPT to use on each proposition`,
+      )
+      .addStringOption((option) =>
+        option
+          .setName("check")
+          .setDescription(
+            "The check. Use <a>, <b>, <c> to refer to target proposition, current fact, new fact respectively.",
+          ),
+      ),
+    async execute(interaction: ChatInputCommandInteraction) {
+      return await handleCustomCheck(interaction);
+    },
+  },
   {
     data: new SlashCommandBuilder()
       .setName("figma")
