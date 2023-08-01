@@ -17,13 +17,23 @@ function getStartOptions(interaction: ChatInputCommandInteraction) {
   if (coherenceCheck == undefined) {
     coherenceCheck = false;
   }
-  return { proposition, coherenceCheck, useFigma, figmaDescription };
+  let customCheck = interaction.options.getBoolean("custom-check");
+  if (customCheck == undefined) {
+    customCheck = false;
+  }
+  return {
+    proposition,
+    coherenceCheck,
+    customCheck,
+    useFigma,
+    figmaDescription,
+  };
 }
 
 export default async function handleStart(
   interaction: ChatInputCommandInteraction,
 ) {
-  let { coherenceCheck, figmaDescription, proposition, useFigma } =
+  let { coherenceCheck, customCheck, figmaDescription, proposition, useFigma } =
     getStartOptions(interaction);
   const truth = randomBoolean();
   if (proposition == undefined) {
