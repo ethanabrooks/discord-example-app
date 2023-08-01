@@ -11,9 +11,8 @@ datasource db {
 }
 
 model FigmaData {
-  id             Int    @id @default(autoincrement())
+  username       String @unique @id
   fileId         String
-  username       String
   encryptedToken String // this is the encrypted token content
   tokenIV        String // this is the initialization vector (IV) for the token
 }

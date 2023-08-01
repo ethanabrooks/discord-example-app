@@ -7,16 +7,15 @@ import {
 import catchError from "./errors.js";
 import { Completion } from "./gpt.js";
 import propositions from "./propositions.js";
-import { FigmaData, PrismaClient } from "@prisma/client";
-import { getSvgUrl } from "./figma.js";
-import { encrypt, decrypt } from "./encryption.js";
+import { FigmaData } from "@prisma/client";
+import { getSvgUrl, handleFigma } from "./figma.js";
+import { decrypt } from "./encryption.js";
 import { Image, step, goToNextTurn, getSetupText } from "./step.js";
 import { negate } from "./text.js";
 import { randomBoolean, randomChoice } from "./math.js";
 import { handleInteraction } from "./interaction.js";
 import { handleThreads } from "./threads.js";
-import { cursorTo } from "readline";
-export const prisma = new PrismaClient();
+import { prisma } from "./prismaClient.js";
 
 const subcommands = {
   // add: "add",
@@ -33,13 +32,6 @@ function throwIfUndefined<T>(value: T | undefined, name: string) {
   if (value == null) {
     throw new Error(`${name} is null`);
   }
-}
-
-async function getFigmaOptions(interaction: ChatInputCommandInteraction) {
-  let token = interaction.options.getString("token");
-  let url = interaction.options.getString("url");
-  let description = interaction.options.getString("description");
-  return { token, url, description };
 }
 
 function getStartOptions(interaction: ChatInputCommandInteraction) {
@@ -281,30 +273,7 @@ export const Commands = [
         option.setName("url").setDescription("The URL for your figma diagram."),
       ),
     async execute(interaction: ChatInputCommandInteraction) {
-      const { token, url } = await getFigmaOptions(interaction);
-      const figmaUrlBase = "https://www.figma.com/file/";
-      if (!url.startsWith(figmaUrlBase)) {
-        return await handleInteraction({
-          interaction,
-          message: `The URL must start with ${figmaUrlBase}`,
-        });
-      }
-      const fileId = url.split("/")[4];
-      const { iv, content } = encrypt(token);
-      await prisma.figmaData.create({
-        data: {
-          encryptedToken: content,
-          fileId,
-          tokenIV: iv,
-          username: interaction.user.username,
-        },
-      });
-
-      await interaction.deferReply();
-      return await handleInteraction({
-        interaction,
-        message: `Submitted figma file id: ${fileId}`,
-      });
+      return await handleFigma(interaction);
     },
   },
   {
