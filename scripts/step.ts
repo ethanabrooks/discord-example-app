@@ -1,6 +1,7 @@
 import { Completion, complete, gpt } from "./utils/gpt.js";
 import { headerPrefix, inConclusion, removeFinalPunctuation } from "./text.js";
 import { CustomCheck } from "@prisma/client";
+import { inferenceText } from "./commands/customCheck.js";
 
 export type Inferences<Type> = {
   oneStep?: Type;
@@ -284,7 +285,9 @@ export async function step({
       model: gpt.four,
       input,
     });
-    const success = inferenceToBoolean(output);
+    const [, inference] = output.split(inferenceText);
+    const success =
+      inference == undefined ? true : inferenceToBoolean(inference);
     completions.custom = [{ input: gptInput, output }];
     if (!success) {
       return turnResult({

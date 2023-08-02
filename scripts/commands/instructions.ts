@@ -49,9 +49,12 @@ export default {
     const selected = options[option];
     const message =
       selected == undefined
-        ? `Invalid option: ${option}. Available options: ${Object.keys(
+        ? `Invalid option _${option}_. You can omit this or enter: ${Object.keys(
             options,
-          ).join(", ")}
+          )
+            .filter((o) => o != null)
+            .map((o) => `\n- _${o}_`)
+            .join("")}
 `
         : selected;
     return await handleInteraction({ interaction, message });

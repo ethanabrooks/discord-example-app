@@ -18,6 +18,8 @@ export function invalidCustomCheck(check: string) {
   return null;
 }
 
+export const inferenceText = "# Inference\n";
+
 async function handleCustomCheck(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply();
   const username = interaction.user.username;
@@ -29,7 +31,10 @@ async function handleCustomCheck(interaction: ChatInputCommandInteraction) {
   const data = { username, check };
   await prisma.customCheck.create({ data });
   const message = `Created figma data:
-  ${JSON.stringify(data, null, 2)}`;
+  ${JSON.stringify(data, null, 2)}
+Verify that this check elicits response ending with the following:
+> ${inferenceText}> <short statement that includes the word "true" (when the check should pass) or "false" (when it shouldn't)>
+Otherwise, the check will always pass`;
   return await handleInteraction({ interaction, message });
 }
 
