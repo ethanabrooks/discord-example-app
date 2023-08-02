@@ -13,7 +13,7 @@ export type Image = {
   svg: string;
   description: string;
 };
-type Fact = {
+export type Fact = {
   text: string;
   image?: Image;
 };
@@ -168,12 +168,12 @@ function conclusionText(proposition: string | null = null) {
   return `${inConclusion} ${proposition}is probably [true|false|indeterminate]`;
 }
 
-async function infer(premises: Fact[], conclusion: Fact) {
+export function inferenceInput(premises: Fact[], conclusion: Fact) {
   const indexed = addIndexToFigures([...premises, conclusion]);
   const premiseTexts: string[] = getPremiseTexts(indexed.slice(0, -1));
   const proposition = getFactText(conclusion, indexed.length);
   const lastPremise = premises[premises.length - 1];
-  const input = `\
+  return `\
 ${getImagesText(premises, conclusion)}\
 ${lastPremise.image == null ? "" : "\n" + lastPremise.image.description + "\n"}\
 ${headerPrefix} Premise${premiseTexts.length > 1 ? "s" : ""}
@@ -187,7 +187,10 @@ Assume ${
     proposition,
   )}_? Think through it step by step. When you are done, finish with the text: "${conclusionText()}"
 `;
+}
 
+async function infer(premises: Fact[], conclusion: Fact) {
+  const input = inferenceInput(premises, conclusion);
   const completions: Completion[] = [];
   const completion = await complete({ input, model: gpt.four });
   completions.push(completion);
