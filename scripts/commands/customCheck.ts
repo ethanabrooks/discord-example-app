@@ -18,7 +18,7 @@ export function invalidCustomCheck(check: string) {
   return null;
 }
 
-export const inferenceText = "# Inference\n";
+export const inferenceText = "# Answer\n";
 
 async function handleCustomCheck(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply();

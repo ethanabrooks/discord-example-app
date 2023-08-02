@@ -7,7 +7,7 @@ const instructions = `\
 # Break the Chain
 _A game where you pit your wits against the world's smartest AI._
 ## Overview
-In this game, you build up a chain of inference that leads to a target proposition. When GPT can no longer infer the beginning of the chain from the end, your win.
+In this game, you build up a chain of inference that leads to a target proposition. When GPT can no longer infer the target proposition at the beginning of the chain from the proposition at the end of the chain, your win.
 ## Starting a game
 Enter \`/play start\` in the discord chat input. There are several options which you can ignore for now (for an explanation, enter \`/instructions options=true\`). After you enter \`/play start\`, you will be presented **facts** and a **target proposition**, which are initially identical. The **target proposition** is the "beginning of the chain" -- the proposition that you want GPT to fail to infer.
 ## Playing the game
