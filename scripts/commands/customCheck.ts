@@ -42,7 +42,8 @@ export default {
         .setName("check")
         .setDescription(
           "The check. Use <a>, <b>, <c> to refer to target proposition, current fact, new fact respectively.",
-        ),
+        )
+        .setRequired(true),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
     return await handleCustomCheck(interaction);
