@@ -14,9 +14,15 @@ import { prisma } from "./utils/prismaClient.js";
 import customCheckCommand from "./commands/customCheck.js";
 import figmaCommand from "./commands/figma.js";
 import playCommand from "./commands/play.js";
+import instructionCommand from "./commands/instructions.js";
 
 // Create commands
-const commands = [customCheckCommand, figmaCommand, playCommand];
+const commands = [
+  customCheckCommand,
+  figmaCommand,
+  playCommand,
+  instructionCommand,
+];
 
 export default class MyClient extends Client {
   commands: Collection<any, any>; // use correct type :)
