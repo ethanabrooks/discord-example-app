@@ -317,7 +317,7 @@ did not pass.`,
       completions,
       comments: [
         ...commentsIntro,
-        "The new facts did not imply the replaced fact.",
+        "The new facts did not follow from the replaced fact.",
       ],
     });
   }
@@ -328,7 +328,7 @@ did not pass.`,
       completions,
       comments: [
         ...commentsIntro,
-        `The new facts imply _${proposition.text}_`,
+        `The new facts follow from _${proposition.text}_`,
         "The first fact was successfully updated.",
       ],
     });
@@ -347,7 +347,7 @@ did not pass.`,
         completions,
         comments: [
           ...commentsIntro,
-          `${oneStepComment}. However, taken with all of the existing facts, they do not imply the proposition. The proposed facts were rejected.`,
+          `${oneStepComment}. However, they do not follow from all of the preceeding facts. The proposed facts were rejected.`,
         ],
       });
     }
@@ -365,10 +365,10 @@ did not pass.`,
     comments: [
       ...commentsIntro,
       oneStepComment,
-      `Taken with all of the existing facts, they also imply the target proposition: _${proposition.text}_`,
+      `Taken with all of the existing facts, they also follow from the initial proposition: _${proposition.text}_`,
       multiStep.success
-        ? `Your new facts were added but the target proposition still follows from updated facts.`
-        : "You broke the chain! GPT couldn't infer the target proposition from the updated facts.",
+        ? `Your new facts were added but the updated facts still follow from the initial proposition.`
+        : "You broke the chain! GPT couldn't infer the new facts from the initial proposition.",
     ],
   });
 }
