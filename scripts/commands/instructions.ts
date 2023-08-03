@@ -19,9 +19,7 @@ Here is how one game played out, with numbers referring to the turn and the text
 1. The dog is not barking loudly. (This is also the target proposition.)
 2. The dog is sleeping.
 3. The dog sleeps when he likes. He likes to sleep after going for his longest walk. He just went for his longest walk.
-At this point, GPT became uncertain about the target proposition _The dog is not barking loudly_ and deemed the inference indeterminate resulting in a win! A good strategy is to keep adding layers of implication so that GPT has to take several implicit steps to reach the target proposition.
-### Options
-There are a few different ways to play the game. You can specify these options during \`/play start\`. For more information about any of these options, enter \`/instructions <option-name>\`.`;
+At this point, GPT became uncertain about the target proposition _The dog is not barking loudly_ and deemed the inference indeterminate resulting in a win! A good strategy is to keep adding layers of implication so that GPT has to take several implicit steps to reach the target proposition.`;
 
 const coherenceCheck = `## Coherence Check
 To activate this option, set \`coherence-check\` to true during \`/play start\`. This option checks if the target proposition follows from the _totality_ of facts submitted so far. Achieving the winning condition while passing this check is much more difficult and you may find that many of your proposed new facts get rejected. The motivation for this check is mathematical: Suppose
