@@ -9,13 +9,13 @@ _A game where you pit your wits against the world's smartest AI._
 ## Overview
 In this game, you build up a chain of inference that leads to a target proposition. When GPT can no longer infer the target proposition at the beginning of the chain from the proposition at the end of the chain, your win.
 ## Starting a game
-Enter \`/play start\` in the discord chat input. There are several options which you can ignore for now (for an explanation, enter \`/instructions options=true\`). After you enter \`/play start\`, you will be presented **facts** and a **target proposition**, which are initially identical. The **target proposition** is the "beginning of the chain" -- the proposition that you want GPT to fail to infer.
+Enter \`/play start\` in the discord chat input. There are several options which you can ignore for now (for an explanation, enter \`/instructions option-name\`). After you enter \`/play start\`, you will be presented **facts** and a **target proposition**, which are initially identical. The **target proposition** is the "beginning of the chain" -- the proposition that you want GPT to fail to infer.
 ## Playing the game
 Each turn, you update the current set of facts. A new fact is permitted if it implies the replaced fact (more checks are necessary if you use the \`coherence-check\` or \`custom-check\` options during \`/play start\`). To see GPT's reasoning for any inference, click the "Reasoning for ..." thread that gets created under the bot's responses.
 ## Winning the game
 You win if GPT no longer infers the target proposition from the current fact.
 ### Example game
-Here is how the one game played out, with numbers referring to the turn and the text indicating the "current fact" at the beginning of each turn:
+Here is how one game played out, with numbers referring to the turn and the text indicating the "current fact" at the beginning of each turn:
 1. The dog is not barking loudly. (This is also the target proposition.)
 2. The dog is sleeping.
 3. The dog sleeps when he likes. He likes to sleep after going for his longest walk. He just went for his longest walk.
