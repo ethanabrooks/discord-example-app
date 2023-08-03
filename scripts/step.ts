@@ -307,8 +307,8 @@ did not pass.`,
   }
 
   const oneStep = await getInferenceResult({
-    premise: [newFact],
-    conclusion: currentFact,
+    premise: [currentFact],
+    conclusion: newFact,
   });
   completions.oneStep = oneStep.completions;
   if (!oneStep.success) {
@@ -337,8 +337,8 @@ did not pass.`,
   const oneStepComment = `The new facts _${newFact.text}_`;
   if (coherenceCheck) {
     const coherence = await getInferenceResult({
-      premise: [...oldFacts, currentFact, newFact],
-      conclusion: proposition,
+      premise: [proposition, ...oldFacts, currentFact].reverse(),
+      conclusion: newFact,
     });
     completions.coherence = coherence.completions;
     if (!coherence.success) {
@@ -354,8 +354,8 @@ did not pass.`,
   }
 
   const multiStep = await getInferenceResult({
-    premise: [newFact],
-    conclusion: proposition,
+    premise: [proposition],
+    conclusion: newFact,
   });
   const status = multiStep.success ? "continue" : "win";
   completions.multiStep = multiStep.completions;
