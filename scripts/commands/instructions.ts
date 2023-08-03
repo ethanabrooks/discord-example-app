@@ -11,9 +11,17 @@ In this game, you build up a chain of inference that leads to a target propositi
 ## Starting a game
 Enter \`/play start\` in the discord chat input. There are several options which you can ignore for now (for an explanation, enter \`/instructions options=true\`). After you enter \`/play start\`, you will be presented **facts** and a **target proposition**, which are initially identical. The **target proposition** is the "beginning of the chain" -- the proposition that you want GPT to fail to infer.
 ## Playing the game
-Each turn, you update the current fact (or set of facts). A new fact is permitted if it implies the replaced fact (more checks are necessary if you use the \`coherence-check\` or \`custom-check\` options during \`/play start\`). To see GPT's reasoning for any inference, click the "Reasoning for ..." thread that gets created under the bot's responses.
+Each turn, you update the current set of facts. A new fact is permitted if it implies the replaced fact (more checks are necessary if you use the \`coherence-check\` or \`custom-check\` options during \`/play start\`). To see GPT's reasoning for any inference, click the "Reasoning for ..." thread that gets created under the bot's responses.
 ## Winning the game
-You win if GPT no longer infers the target proposition from the current fact.`;
+You win if GPT no longer infers the target proposition from the current fact.
+### Example game
+Here is how the one game played out, with numbers referring to the turn and the text indicating the "current fact" at the beginning of each turn:
+1. The dog is not barking loudly. (This is also the target proposition.)
+2. The dog is sleeping.
+3. The dog sleeps when he likes. He likes to sleep after going for his longest walk. He just went for his longest walk.
+At this point, GPT became uncertain about the target proposition _The dog is not barking loudly_ and deemed the inference indeterminate resulting in a win! A good strategy is to keep adding layers of implication so that GPT has to take several implicit steps to reach the target proposition.
+### Options
+There are a few different ways to play the game. You can specify these options during \`/play start\`. For more information about any of these options, enter \`/instructions <option-name>\`.`;
 
 const coherenceCheck = `## Coherence Check
 To activate this option, set \`coherence-check\` to true during \`/play start\`. This option checks if the target proposition follows from the _totality_ of facts submitted so far. Achieving the winning condition while passing this check is much more difficult and you may find that many of your proposed new facts get rejected. The motivation for this check is mathematical: Suppose
