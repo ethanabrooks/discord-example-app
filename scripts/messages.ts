@@ -1,5 +1,5 @@
 import { Collection, CommandInteraction, Message } from "discord.js";
-import { createChatCompletionWithBackoff } from "./utils/gpt.js";
+import { createChatCompletionWithBackoff, gpt } from "./utils/gpt.js";
 import { ChatCompletionRequestMessage } from "openai";
 import { Logger } from "pino";
 import get from "axios";
@@ -103,15 +103,16 @@ export async function interactionToMessages(
 
 export async function messagesToContent(
   messages: void | ChatCompletionRequestMessage[],
-  logger: Logger,
 ) {
   if (messages instanceof Object) {
     // Query GPT
     const content = await createChatCompletionWithBackoff({
       messages,
-      logger,
+      model: gpt.three,
     });
-    return content === undefined ? "Error: GPT-3 API call failed" : content;
+    return content === undefined
+      ? "Error: GPT-3 API call failed"
+      : content.output;
   } else {
     return "Error: Failed to fetch messages";
   }

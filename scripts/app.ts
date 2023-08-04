@@ -15,6 +15,7 @@ import customCheckCommand from "./commands/customCheck.js";
 import figmaCommand from "./commands/figma.js";
 import playCommand from "./commands/play.js";
 import instructionCommand from "./commands/instructions.js";
+import gCommand from "./commands/g.js";
 
 // Create commands
 const commands = [
@@ -22,6 +23,7 @@ const commands = [
   figmaCommand,
   playCommand,
   instructionCommand,
+  gCommand,
 ];
 
 export default class MyClient extends Client {

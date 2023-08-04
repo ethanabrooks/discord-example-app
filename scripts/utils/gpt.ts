@@ -38,10 +38,10 @@ function getMaxTokens(model: string): number {
   switch (model) {
     case "gpt-3.5-turbo":
     case "gpt-3.5-turbo-0301":
-      return 4096 - 1024 - 512;
+      return 2 ** 12 - 2 ** 10 - 2 ** 9 - 2 ** 8;
     case "gpt-4":
     case "gpt-4-0314":
-      return 8192 + 4096;
+      return 2 ** 13 + 2 ** 12;
     default:
       throw new Error(
         `get_max_tokens() is not implemented for model ${model}.`,
@@ -360,15 +360,16 @@ export async function createChatCompletionWithBackoff({
     model,
     limit: getMaxTokens(model),
   }).map(indexedToChatCompletionRequestMessage);
+  console.log(inputMessages);
   const numTokens = numTokensFromMessages(inputMessages);
   const numCharacters = messagesLength(inputMessages);
-  console.log("Messages tokens:", numTokens);
-  console.log("Messages characters:", numCharacters);
-  console.log("Model:", model);
   if (logger != null) {
     logger.debug({ inputMessages });
   }
   const input = messages.map(({ content }) => content).join("");
+  console.log("Messages tokens:", numTokens);
+  console.log("Messages characters:", numCharacters);
+  console.log("Model:", model);
   const content: string | undefined = await openai
     .createChatCompletion({
       model,
