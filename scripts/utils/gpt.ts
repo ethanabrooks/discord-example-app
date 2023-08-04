@@ -41,7 +41,7 @@ function getMaxTokens(model: string): number {
       return 2 ** 12 - 2 ** 10 - 2 ** 9 - 2 ** 8;
     case "gpt-4":
     case "gpt-4-0314":
-      return 2 ** 13 + 2 ** 12;
+      return 2 ** 12; //3 + 2 ** 12;
     default:
       throw new Error(
         `get_max_tokens() is not implemented for model ${model}.`,
