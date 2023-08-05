@@ -1,12 +1,10 @@
 import { ChatInputCommandInteraction, TextChannel } from "discord.js";
 import { prisma } from "../../utils/prismaClient.js";
-import { goToNextTurn, step, Image } from "../../step.js";
+import { goToNextTurn, step, Difficulty } from "../../step.js";
 import { Completion } from "../../utils/gpt.js";
 import { handleThreads } from "../../threads.js";
 import { handleInteraction } from "../../interaction.js";
-import { getSvg } from "../../utils/figma.js";
-import { getFigmaData } from "../figma.js";
-import { invalidCustomCheck } from "../customCheck.js";
+import { encrypt } from "../../utils/encryption.js";
 
 function getUpdateOptions(interaction: ChatInputCommandInteraction) {
   const newFact = interaction.options.getString("new-facts");
@@ -17,17 +15,15 @@ function getUpdateOptions(interaction: ChatInputCommandInteraction) {
 export default async function handleUpdate(
   interaction: ChatInputCommandInteraction,
 ) {
-  let { newFact: playerInput, figmaDescription } =
-    getUpdateOptions(interaction);
+  let { newFact: playerInput } = getUpdateOptions(interaction);
 
   const game = await prisma.game.findFirst({
-    include: { customCheck: true },
     where: { channel: interaction.channelId },
     orderBy: { id: "desc" },
   });
   const turns = await prisma.turn.findMany({
     include: {
-      fact: { include: { image: true } },
+      fact: true,
       game: true,
     },
     where: { game },
@@ -37,8 +33,8 @@ export default async function handleUpdate(
   const oldFacts = facts.slice(1, facts.length - 1);
   const [proposition] = facts;
   const currentTurnNumber = turns.length - 1;
-  const firstTurn = currentTurnNumber == 0;
   const turn = turns[currentTurnNumber];
+  const firstTurn = currentTurnNumber == 0;
   if (playerInput == undefined) {
     playerInput = currentFact.text;
   }
@@ -58,29 +54,14 @@ export default async function handleUpdate(
   //   default:
   //     break;
   // }
-  let image = null;
-  if (currentFact.image != null) {
-    const figmaData = await getFigmaData(interaction.user.username);
-    const svg = await getSvg(figmaData);
-    const description = figmaDescription ?? currentFact.image.description;
-    image = { svg, description };
-  }
-
-  if (game.customCheck != null) {
-    const invalid = invalidCustomCheck(game.customCheck.check);
-    if (invalid != null) {
-      return await handleInteraction({
-        interaction,
-        message: invalid,
-      });
-    }
-  }
+  const difficulty: Difficulty = Difficulty[
+    game.difficulty
+  ] as unknown as Difficulty;
 
   const { completions, messages, status } = await step({
-    coherenceCheck: game.coherenceCheck,
+    difficulty,
     currentFact,
-    customCheck: game.customCheck,
-    newFact: { text: playerInput, image },
+    newFact: { text: playerInput },
     oldFacts,
     proposition,
     firstTurn,
@@ -90,41 +71,29 @@ export default async function handleUpdate(
     (c) => c ?? [],
   );
 
+  const { iv: playerIv, content: playerEnc } = encrypt(
+    interaction.user.username,
+  );
+  const data = {
+    status,
+    playerInput,
+    playerIv,
+    playerEnc,
+    completions: {
+      create: completionsArray,
+    },
+    game: {
+      connect: { id: game.id },
+    },
+  };
   if (goToNextTurn(status)) {
-    type FactCreateInput = {
-      text: string;
-      image?: {
-        create: {
-          svg: string;
-          description?: string;
-        };
-      };
-    };
-
-    const fact = { text: playerInput };
-    if (image != null) {
-      fact["image"] = { create: image };
-    }
-
-    await prisma.turn.create({
-      data: {
-        completions: {
-          create: completionsArray,
-        },
-        fact: {
-          create: fact,
-        },
-        game: {
-          connect: { id: game.id },
-        },
-        playerInput,
-        player: interaction.user.username,
-        status,
-      },
-    });
+    data["fact"] = { create: { text: playerInput } };
   }
+
+  const newTurnObject = await prisma.turn.create({ data });
+  console.log(newTurnObject);
   const completionsObjects = await prisma.completion.findMany({
-    where: { turnId: turn.id },
+    where: { turn },
     orderBy: { id: "desc" },
   });
   console.log(completionsObjects);

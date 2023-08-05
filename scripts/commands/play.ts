@@ -1,7 +1,8 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
-import { addFigmaDescriptionOption } from "../utils/figma.js";
-import handleStart from "./play/start.js";
+import handleStart, { difficultyStrings } from "./play/start.js";
 import handleUpdate from "./play/update.js";
+import { Difficulty } from "../step.js";
+import { type } from "os";
 
 const subcommands = {
   // add: "add",
@@ -15,50 +16,34 @@ export default {
     .setName("play")
     .setDescription(`Play break the chain`)
     .addSubcommand((subcommand) =>
-      addFigmaDescriptionOption(
-        subcommand
-          .setName(subcommands.start)
-          .setDescription("Start a new game.")
-          .addStringOption((option) =>
-            option
-              .setName("proposition")
-              .setDescription("The target proposition that GPT tries to prove.")
-              .setRequired(false),
-          )
-          .addBooleanOption((option) =>
-            option
-              .setName("coherence-check")
-              .setDescription("Whether to check for coherence.")
-              .setRequired(false),
-          )
-          .addBooleanOption((option) =>
-            option
-              .setName("custom-check")
-              .setDescription("Whether to use the current custom check.")
-              .setRequired(false),
-          )
-          .addBooleanOption((option) =>
-            option
-              .setName("use-figma")
-              .setDescription(
-                "Whether to incorporate Figma diagram into prompts.",
-              )
-              .setRequired(false),
-          ),
-      ),
+      subcommand
+        .setName(subcommands.start)
+        .setDescription("Start a new game.")
+        .addIntegerOption((option) =>
+          option
+            .setName("difficulty")
+            .setDescription(
+              `Difficulty level: ${difficultyStrings.join(", ")}.`,
+            )
+            .setRequired(true),
+        )
+        .addStringOption((option) =>
+          option
+            .setName("proposition")
+            .setDescription("The target proposition that GPT tries to prove.")
+            .setRequired(false),
+        ),
     )
     .addSubcommand((subcommand) =>
-      addFigmaDescriptionOption(
-        subcommand
-          .setName(subcommands.update)
-          .setDescription("Choose a new set of facts to replace the old set.")
-          .addStringOption((option) =>
-            option
-              .setName("new-facts")
-              .setDescription("The new facts to replace the old ones with.")
-              .setRequired(true),
-          ),
-      ),
+      subcommand
+        .setName(subcommands.update)
+        .setDescription("Choose a new set of facts to replace the old set.")
+        .addStringOption((option) =>
+          option
+            .setName("new-facts")
+            .setDescription("The new facts to replace the old ones with.")
+            .setRequired(true),
+        ),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
     const subcommand = interaction.options.getSubcommand();

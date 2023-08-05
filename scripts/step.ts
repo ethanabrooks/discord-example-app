@@ -1,7 +1,5 @@
 import { Completion, complete, gpt } from "./utils/gpt.js";
 import { headerPrefix, inConclusion, removeFinalPunctuation } from "./text.js";
-import { CustomCheck } from "@prisma/client";
-import { inferenceText } from "./commands/customCheck.js";
 
 export type Inferences<Type> = {
   oneStep?: Type;
@@ -17,6 +15,12 @@ export type Fact = {
   text: string;
   image?: Image;
 };
+
+export enum Difficulty {
+  NO_CHECK,
+  COHERENCE_CHECK,
+}
+export const numDifficulties = Object.keys(Difficulty).length / 2;
 type Status = "win" | "try again" | "continue";
 type FactStatus = "initial" | "updated" | "unchanged";
 
@@ -220,17 +224,15 @@ async function getInferenceResult({
 }
 
 export async function step({
-  coherenceCheck,
+  difficulty,
   currentFact,
-  customCheck,
   newFact,
   oldFacts,
   proposition,
   firstTurn,
 }: {
-  coherenceCheck: boolean;
+  difficulty: Difficulty;
   currentFact: Fact;
-  customCheck: CustomCheck | null;
   newFact: Fact;
   oldFacts: Fact[];
   proposition: Fact;
@@ -276,34 +278,6 @@ export async function step({
 
   const completions: Inferences<Completion[]> = {};
 
-  if (customCheck != null) {
-    const input = customCheck.check
-      .replace(/<a>/gi, proposition.text)
-      .replace(/<b>/gi, currentFact.text)
-      .replace(/<c>/gi, newFact.text);
-
-    const { input: gptInput, output } = await complete({
-      model: gpt.four,
-      input,
-    });
-    const [, inference] = output.split(inferenceText);
-    const success =
-      inference == undefined ? true : inferenceToBoolean(inference);
-    completions.custom = [{ input: gptInput, output }];
-    if (!success) {
-      return turnResult({
-        status: "try again",
-        completions,
-        comments: [
-          ...commentsIntro,
-          `The custom check:
-> ${input}
-did not pass.`,
-        ],
-      });
-    }
-  }
-
   const oneStep = await getInferenceResult({
     premise: [newFact],
     conclusion: currentFact,
@@ -333,22 +307,27 @@ did not pass.`,
   }
 
   const oneStepComment = `The new facts _${newFact.text}_`;
-  if (coherenceCheck) {
-    const coherence = await getInferenceResult({
-      premise: [...oldFacts, currentFact, newFact],
-      conclusion: proposition,
-    });
-    completions.coherence = coherence.completions;
-    if (!coherence.success) {
-      return turnResult({
-        status: "try again",
-        completions,
-        comments: [
-          ...commentsIntro,
-          `${oneStepComment}. However, taken with all of the existing facts, they do not imply the proposition. The proposed facts were rejected.`,
-        ],
+  switch (difficulty) {
+    case 1:
+      const coherence = await getInferenceResult({
+        premise: [...oldFacts, currentFact, newFact],
+        conclusion: proposition,
       });
-    }
+      completions.coherence = coherence.completions;
+      if (!coherence.success) {
+        return turnResult({
+          status: "try again",
+          completions,
+          comments: [
+            ...commentsIntro,
+            `${oneStepComment}. However, taken with all of the existing facts, they do not imply the proposition. The proposed facts were rejected.`,
+          ],
+        });
+      }
+      break;
+
+    default:
+      break;
   }
 
   const multiStep = await getInferenceResult({

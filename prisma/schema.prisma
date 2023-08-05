@@ -10,34 +10,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model CustomCheck {
-  id       Int    @id @default(autoincrement())
-  username String
-  check    String
-  Game     Game[]
-}
-
-model FigmaData {
-  username       String @id @unique
-  fileId         String
-  encryptedToken String // this is the encrypted token content
-  tokenIV        String // this is the initialization vector (IV) for the token
-}
-
 model Game {
-  id             Int          @id @default(autoincrement())
-  channel        String
-  coherenceCheck Boolean
-  turns          Turn[]
-  customCheck    CustomCheck? @relation(fields: [customCheckId], references: [id])
-  customCheckId  Int?
+  id         Int    @id @default(autoincrement())
+  channel    String
+  difficulty Int
+  turns      Turn[]
 }
 
 model Turn {
   id          Int          @id @default(autoincrement())
   status      String
   playerInput String?
-  player      String // Initialization Vector for player field
+  playerIv    String // Initialization Vector for player field
+  playerEnc   String // Encrypted player content
   fact        Fact?
   completions Completion[]
   gameId      Int
@@ -45,11 +30,9 @@ model Turn {
 }
 
 model Fact {
-  id      Int    @id @default(autoincrement())
-  text    String
-  image   Image? @relation(fields: [imageId], references: [id])
-  imageId Int?   @unique
-  turn    Turn   @relation(fields: [id], references: [id])
+  id   Int    @id @default(autoincrement())
+  text String
+  turn Turn   @relation(fields: [id], references: [id])
 }
 
 model Completion {
@@ -58,12 +41,4 @@ model Completion {
   output String
   turn   Turn   @relation(fields: [turnId], references: [id])
   turnId Int
-}
-
-model Image {
-  id          Int     @id @default(autoincrement())
-  description String?
-  svg         String
-  factId      Int     @unique
-  Fact        Fact?
 }
