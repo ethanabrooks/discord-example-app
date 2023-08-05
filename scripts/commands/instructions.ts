@@ -9,11 +9,17 @@ _A game where you pit your wits against the world's smartest AI._
 ## Overview
 In this game, you build up a chain of inference that leads to a target proposition. When GPT can no longer infer the target proposition at the beginning of the chain from the proposition at the end of the chain, your win.
 ## Starting a game
-Enter \`/play start\` in the discord chat input. There are several options which you can ignore for now (for an explanation, enter \`/instructions options=true\`). After you enter \`/play start\`, you will be presented **facts** and a **target proposition**, which are initially identical. The **target proposition** is the "beginning of the chain" -- the proposition that you want GPT to fail to infer.
+Enter \`/play start\` in the discord chat input. There are several options which you can ignore for now (for an explanation, enter \`/instructions option-name\`). After you enter \`/play start\`, you will be presented **facts** and a **target proposition**, which are initially identical. The **target proposition** is the "beginning of the chain" -- the proposition that you want GPT to fail to infer.
 ## Playing the game
-Each turn, you update the current fact (or set of facts). A new fact is permitted if it implies the replaced fact (more checks are necessary if you use the \`coherence-check\` or \`custom-check\` options during \`/play start\`). To see GPT's reasoning for any inference, click the "Reasoning for ..." thread that gets created under the bot's responses.
+Each turn, you update the current set of facts. A new fact is permitted if it is implied by the replaced fact (more checks are necessary if you use the \`coherence-check\` or \`custom-check\` options during \`/play start\`). To see GPT's reasoning for any inference, click the "Reasoning for ..." thread that gets created under the bot's responses.
 ## Winning the game
-You win if GPT no longer infers the target proposition from the current fact.`;
+You win if GPT no longer infers the current fact from the target proposition.
+### Example game
+Here is how one game played out, with numbers referring to the turn and the text indicating the "current fact" at the beginning of each turn:
+1. A red apple and a green apple appear to be the same size, but the green apple is twice as far away.
+2. If the red apple is moved to the same distance as the green apple, it will appear to be half the green apple's size.
+3. If the red apple is moved to twice the distance as the green apple, it will appear to be one-quarter the size of the green apple.
+At this point, GPT became uncertain about the current fact, given the target proposition, resulting in a win! A good strategy is to make difficult but clear inferences each step so that GPT has to take several implicit steps to reach the target proposition.`;
 
 const coherenceCheck = `## Coherence Check
 To activate this option, set \`coherence-check\` to true during \`/play start\`. This option checks if the target proposition follows from the _totality_ of facts submitted so far. Achieving the winning condition while passing this check is much more difficult and you may find that many of your proposed new facts get rejected. The motivation for this check is mathematical: Suppose
