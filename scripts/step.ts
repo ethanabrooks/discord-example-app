@@ -226,7 +226,7 @@ export async function step({
   newFact,
   oldFacts,
   proposition,
-  turn,
+  firstTurn,
 }: {
   coherenceCheck: boolean;
   currentFact: Fact;
@@ -234,12 +234,11 @@ export async function step({
   newFact: Fact;
   oldFacts: Fact[];
   proposition: Fact;
-  turn: number;
+  firstTurn: boolean;
 }): Promise<{
   messages: string[];
   completions: Inferences<Completion[]>;
   status: Status;
-  turn: number;
 }> {
   const commentsIntro = [
     `${headerPrefix} Proposed new facts`,
@@ -272,7 +271,6 @@ export async function step({
       ],
       completions,
       status,
-      turn: turn + +goToNextTurn(status),
     };
   }
 
@@ -322,7 +320,7 @@ did not pass.`,
     });
   }
 
-  if (turn == 0) {
+  if (firstTurn) {
     return turnResult({
       status: "continue",
       completions,

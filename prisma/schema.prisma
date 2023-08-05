@@ -11,10 +11,10 @@ datasource db {
 }
 
 model CustomCheck {
-  id          Int    @id @default(autoincrement())
-  username    String
-  check       String
-  Game        Game[]
+  id       Int    @id @default(autoincrement())
+  username String
+  check    String
+  Game     Game[]
 }
 
 model FigmaData {
@@ -24,53 +24,46 @@ model FigmaData {
   tokenIV        String // this is the initialization vector (IV) for the token
 }
 
+model Game {
+  id             Int          @id @default(autoincrement())
+  channel        String
+  coherenceCheck Boolean
+  turns          Turn[]
+  customCheck    CustomCheck? @relation(fields: [customCheckId], references: [id])
+  customCheckId  Int?
+}
+
+model Turn {
+  id          Int          @id @default(autoincrement())
+  status      String
+  playerInput String?
+  player      String // Initialization Vector for player field
+  fact        Fact?
+  completions Completion[]
+  gameId      Int
+  game        Game         @relation(fields: [gameId], references: [id])
+}
+
+model Fact {
+  id      Int    @id @default(autoincrement())
+  text    String
+  image   Image? @relation(fields: [imageId], references: [id])
+  imageId Int?   @unique
+  turn    Turn   @relation(fields: [id], references: [id])
+}
+
+model Completion {
+  id     Int    @id @default(autoincrement())
+  input  String
+  output String
+  turn   Turn   @relation(fields: [turnId], references: [id])
+  turnId Int
+}
+
 model Image {
   id          Int     @id @default(autoincrement())
   description String?
   svg         String
   factId      Int     @unique
-  fact        Fact    @relation(fields: [factId], references: [id])
-  Turn        Turn[]
-}
-
-model Fact {
-  id     Int    @id @default(autoincrement())
-  image  Image?
-  turn   Turn   @relation(fields: [turnId], references: [id])
-  turnId Int
-  text   String
-  Game   Game[]
-}
-
-model Completion {
-  id     Int    @id @default(autoincrement())
-  turn   Turn   @relation(fields: [turnId], references: [id])
-  turnId Int
-  input  String
-  output String
-}
-
-model Turn {
-  id          Int          @id @default(autoincrement())
-  completions Completion[]
-  facts       Fact[]
-  game        Game         @relation(fields: [gameId], references: [id])
-  gameId      Int
-  newFact     String?
-  player      String
-  status      String
-  turn        Int
-  Image       Image?       @relation(fields: [imageId], references: [id])
-  imageId     Int?
-}
-
-model Game {
-  id             Int          @id @default(autoincrement())
-  turns          Turn[]
-  channel        String
-  coherenceCheck Boolean
-  customCheck    CustomCheck? @relation(fields: [customCheckId], references: [id])
-  customCheckId  Int?
-  Fact           Fact?        @relation(fields: [factId], references: [id])
-  factId         Int?
+  Fact        Fact?
 }

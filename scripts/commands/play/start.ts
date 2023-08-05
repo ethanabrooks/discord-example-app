@@ -48,8 +48,9 @@ export default async function handleStart(
     const positiveFact = `${randomChoice(propositions)}.`;
     proposition = truth ? positiveFact : (await negate(positiveFact)).output;
   }
+  const fact = { text: proposition };
+  const prismaFact = { text: proposition };
 
-  let image: { svg: string; description: string } = undefined;
   if (useFigma) {
     const figmaData = await getFigmaData(interaction.user.username);
     if (figmaData == null) {
@@ -75,7 +76,9 @@ export default async function handleStart(
     // If a turnData was found and it has Image with a description, use it
     // Otherwise, default to an empty string
     const description = figmaDescription ?? oldFact?.image?.description;
-    image = { svg, description };
+    const image = { svg, description };
+    prismaFact["image"] = { create: image };
+    fact["image"] = image;
   }
 
   const data = {
@@ -84,10 +87,10 @@ export default async function handleStart(
 
     turns: {
       create: {
-        facts: { create: { text: proposition, image: { create: image } } },
+        fact: { create: fact },
         player: interaction.user.username,
         status: "initial",
-        turn: 0,
+        playerInput: proposition,
       },
     },
   };
@@ -112,7 +115,6 @@ export default async function handleStart(
   const game = await prisma.game.create({ data });
   console.log(game);
 
-  const fact = { text: proposition, image };
   await handleInteraction({
     interaction,
     message: getSetupText({

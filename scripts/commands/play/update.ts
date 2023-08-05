@@ -17,28 +17,30 @@ function getUpdateOptions(interaction: ChatInputCommandInteraction) {
 export default async function handleUpdate(
   interaction: ChatInputCommandInteraction,
 ) {
-  let { newFact: userInput, figmaDescription } = getUpdateOptions(interaction);
+  let { newFact: playerInput, figmaDescription } =
+    getUpdateOptions(interaction);
 
-  const turnObject = await prisma.turn.findFirst({
-    include: {
-      facts: {
-        include: {
-          image: true,
-        },
-      },
-      game: {
-        include: { customCheck: true },
-      },
-    },
-    where: { game: { channel: interaction.channelId } },
+  const game = await prisma.game.findFirst({
+    include: { customCheck: true },
+    where: { channel: interaction.channelId },
     orderBy: { id: "desc" },
   });
-  const { facts, game, turn: oldTurn } = turnObject;
+  const turns = await prisma.turn.findMany({
+    include: {
+      fact: { include: { image: true } },
+      game: true,
+    },
+    where: { game },
+  });
+  const facts = turns.flatMap((t) => t.fact);
   const currentFact = facts[facts.length - 1];
   const oldFacts = facts.slice(1, facts.length - 1);
   const [proposition] = facts;
-  if (userInput == undefined) {
-    userInput = currentFact.text;
+  const currentTurnNumber = turns.length - 1;
+  const firstTurn = currentTurnNumber == 0;
+  const turn = turns[currentTurnNumber];
+  if (playerInput == undefined) {
+    playerInput = currentFact.text;
   }
 
   // const subcommand = interaction.options.getSubcommand();
@@ -74,55 +76,55 @@ export default async function handleUpdate(
     }
   }
 
-  const { completions, messages, status, turn } = await step({
+  const { completions, messages, status } = await step({
     coherenceCheck: game.coherenceCheck,
     currentFact,
     customCheck: game.customCheck,
-    newFact: { text: userInput, image },
+    newFact: { text: playerInput, image },
     oldFacts,
     proposition,
-    turn: oldTurn,
+    firstTurn,
   });
 
   const completionsArray: Completion[] = Object.values(completions).flatMap(
     (c) => c ?? [],
   );
 
-  function createNewFact(text: string, image: null | Image) {
-    if (image == null) {
-      return { text };
-    }
-    const { svg, description } = image;
-    return {
-      text,
-      image: { create: { svg, description } },
-    };
-  }
-  const newFacts = facts.map(({ text, image }) => createNewFact(text, image));
   if (goToNextTurn(status)) {
-    newFacts.push(createNewFact(userInput, image));
+    type FactCreateInput = {
+      text: string;
+      image?: {
+        create: {
+          svg: string;
+          description?: string;
+        };
+      };
+    };
+
+    const fact = { text: playerInput };
+    if (image != null) {
+      fact["image"] = { create: image };
+    }
+
+    await prisma.turn.create({
+      data: {
+        completions: {
+          create: completionsArray,
+        },
+        fact: {
+          create: fact,
+        },
+        game: {
+          connect: { id: game.id },
+        },
+        playerInput,
+        player: interaction.user.username,
+        status,
+      },
+    });
   }
-  console.log(newFacts);
-  const newTurnObject = await prisma.turn.create({
-    data: {
-      completions: {
-        create: completionsArray,
-      },
-      facts: {
-        create: newFacts,
-      },
-      game: {
-        connect: { id: game.id },
-      },
-      newFact: userInput,
-      player: interaction.user.username,
-      status,
-      turn,
-    },
-  });
-  console.log(newTurnObject);
   const completionsObjects = await prisma.completion.findMany({
-    where: { turnId: turnObject.id },
+    where: { turnId: turn.id },
     orderBy: { id: "desc" },
   });
   console.log(completionsObjects);
