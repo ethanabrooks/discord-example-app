@@ -9,14 +9,12 @@ import {
   REST,
   Routes,
 } from "discord.js";
-import { createLogger } from "./utils/logger.js";
 import { prisma } from "./utils/prismaClient.js";
-import playCommand from "./commands/play.js";
-import instructionCommand from "./commands/instructions.js";
-import analysisCommand from "./commands/analyze.js";
+import diagram from "./commands/diagram.js";
+import g from "./commands/g.js";
 
 // Create commands
-const commands = [playCommand, instructionCommand, analysisCommand];
+const commands = [diagram, g];
 
 export default class MyClient extends Client {
   commands: Collection<any, any>; // use correct type :)
@@ -56,8 +54,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   const client = interaction.client as MyClient;
   const command = client.commands.get(interaction.commandName);
-  const logger = createLogger("app", interaction.channelId);
-  logger.info({ interaction: interaction.toJSON() });
 
   if (!command) {
     console.error(`No command matching ${interaction.commandName} was found.`);
@@ -68,7 +64,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await command.execute(interaction);
   } catch (error) {
     console.error(error);
-    logger.error(error);
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp({
         content: "There was an error while executing this command!",

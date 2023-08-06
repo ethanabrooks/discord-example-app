@@ -6,7 +6,6 @@ import {
 } from "openai";
 import { encode } from "gpt-3-encoder";
 
-import { Logger } from "pino";
 import catchError from "./errors.js";
 
 const MODEL = "gpt-3.5-turbo-0301";
@@ -307,13 +306,11 @@ export async function complete({
   stopWord = undefined,
   delay = 1,
   model = MODEL,
-  logger = null,
 }: {
   input: string;
   stopWord?: string | undefined;
   delay?: number;
   model?: string;
-  logger?: Logger | null;
 }) {
   console.log("input");
   console.log(input);
@@ -325,7 +322,6 @@ export async function complete({
     stopWord,
     delay,
     model,
-    logger,
   });
 }
 
@@ -334,13 +330,11 @@ export async function createChatCompletionWithBackoff({
   stopWord = undefined,
   delay = 1,
   model = MODEL,
-  logger = null,
 }: {
   messages: ChatCompletionRequestMessage[];
   stopWord?: string | undefined;
   delay?: number;
   model?: string;
-  logger?: Logger | null;
 }): Promise<Completion | undefined> {
   const length = messagesLength(messages);
   const indexedMessages = messages.map(
@@ -360,13 +354,11 @@ export async function createChatCompletionWithBackoff({
     model,
     limit: getMaxTokens(model),
   }).map(indexedToChatCompletionRequestMessage);
-  console.log(inputMessages);
+  // console.log(inputMessages);
   const numTokens = numTokensFromMessages(inputMessages);
   const numCharacters = messagesLength(inputMessages);
-  if (logger != null) {
-    logger.debug({ inputMessages });
-  }
   const input = messages.map(({ content }) => content).join("");
+  console.log(input);
   console.log("Messages tokens:", numTokens);
   console.log("Messages characters:", numCharacters);
   console.log("Model:", model);
@@ -396,7 +388,6 @@ export async function createChatCompletionWithBackoff({
         stopWord,
         delay: delay * 2,
         model,
-        logger,
       });
       return retry.output;
     });
@@ -413,11 +404,5 @@ export async function createChatCompletionWithBackoff({
   }
   console.log("completion");
   console.log(content);
-  if (logger != null) {
-    logger.debug({
-      messages: inputMessages,
-      completion: content,
-    });
-  }
   return { output: content, input };
 }

@@ -1,8 +1,7 @@
 import { Collection, CommandInteraction, Message } from "discord.js";
 import { createChatCompletionWithBackoff, gpt } from "./utils/gpt.js";
 import { ChatCompletionRequestMessage } from "openai";
-import { Logger } from "pino";
-import get from "axios";
+import get, { all } from "axios";
 
 const clientId = process.env.APP_ID;
 
@@ -38,28 +37,25 @@ async function getAttachmentCCRMessages(
   attachment,
   message,
 ): Promise<ChatCompletionRequestMessage[]> {
-  const contents: Promise<ChatCompletionRequestMessage[]> = get(attachment.url)
-    .then((response): ChatCompletionRequestMessage[] => {
-      if (attachment.contentType?.startsWith("text")) {
-        const data = response.data;
+  const contents: Promise<ChatCompletionRequestMessage[]> = get(
+    attachment.url,
+  ).then((response): ChatCompletionRequestMessage[] => {
+    if (attachment.contentType?.startsWith("text")) {
+      const data = response.data;
 
-        if (Array.isArray(data) && data.every(isCCRMessage)) {
-          return data;
-        }
-        const ccrMessage: ChatCompletionRequestMessage = {
-          role: getRole(message.author?.id),
-          content: data instanceof Object ? JSON.stringify(data) : data,
-        };
-
-        return [ccrMessage];
-      } else {
-        return [];
+      if (Array.isArray(data) && data.every(isCCRMessage)) {
+        return data;
       }
-    })
-    .catch((error): ChatCompletionRequestMessage[] => {
-      console.error("Error: " + error.message);
+      const ccrMessage: ChatCompletionRequestMessage = {
+        role: getRole(message.author?.id),
+        content: data instanceof Object ? JSON.stringify(data) : data,
+      };
+
+      return [ccrMessage];
+    } else {
       return [];
-    });
+    }
+  });
   return await contents;
 }
 
@@ -80,9 +76,28 @@ async function getCCRMessages(
   return attachmentMessages.concat([mainMessage]);
 }
 
-export async function interactionToMessages(
-  interaction: CommandInteraction,
-): Promise<void | ChatCompletionRequestMessage[]> {
+export async function interactionToCCRMessages({
+  interaction,
+  since = null,
+}: {
+  interaction: CommandInteraction;
+  since?: string | null;
+}): Promise<ChatCompletionRequestMessage[]> {
+  const messages: Message<true>[] = await interactionToMessages({
+    interaction,
+    since,
+  });
+
+  return (await Promise.all(messages.flatMap(getCCRMessages))).flat();
+}
+
+async function interactionToMessages({
+  interaction,
+  since,
+}: {
+  interaction: CommandInteraction;
+  since: string | null;
+}): Promise<Message<true>[]> {
   const channel = interaction.channel;
   if (channel == null) {
     return [];
@@ -92,13 +107,28 @@ export async function interactionToMessages(
       limit: 100,
       cache: false,
     })
-    .then(async (messages: Collection<string, Message<true>>) => {
-      const messagePromises = Array.from(messages.values())
-        .reverse()
-        .flatMap(getCCRMessages);
-      return (await Promise.all(messagePromises)).flat();
-    })
-    .catch(console.error);
+    .then(async (messagesCollection: Collection<string, Message<true>>) => {
+      const allMessages: Message<true>[] = Array.from(
+        messagesCollection.values(),
+      ).reverse();
+      const { filtered } = allMessages.reduce(
+        (
+          {
+            reachedId,
+            filtered,
+          }: { reachedId: boolean; filtered: Message<true>[] },
+          message: Message<true>,
+        ) => {
+          reachedId = reachedId || message.id === since;
+          if (reachedId) {
+            filtered.push(message);
+          }
+          return { reachedId, filtered };
+        },
+        { reachedId: since == null, filtered: [] },
+      );
+      return filtered;
+    });
 }
 
 export async function messagesToContent(

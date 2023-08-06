@@ -10,44 +10,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Game {
-  id         Int    @id @default(autoincrement())
-  channel    String
-  difficulty Int
-  turns      Turn[]
-}
-
-model Turn {
-  id          Int          @id @default(autoincrement())
-  status      String
-  playerInput String?
-  playerIv    String // Initialization Vector for player field
-  playerEnc   String // Encrypted player content
-  fact        Fact?
-  completions Completion[]
-  gameId      Int
-  game        Game         @relation(fields: [gameId], references: [id])
-}
-
-model Fact {
-  id   Int    @id @default(autoincrement())
-  text String
-  turn Turn   @relation(fields: [id], references: [id])
-}
-
-model Completion {
-  id       Int        @id @default(autoincrement())
-  input    String
-  output   String
-  turn     Turn       @relation(fields: [turnId], references: [id])
-  turnId   Int
-  Analysis Analysis[]
-}
-
-model Analysis {
-  id           Int        @id @default(autoincrement())
-  user         String
-  correct      Boolean
-  completion   Completion @relation(fields: [completionId], references: [id])
-  completionId Int
+model Spec {
+  id        Int    @id @default(autoincrement())
+  messageId String @unique
+  channel   String
+  source    String
 }
