@@ -13,9 +13,10 @@ import { createLogger } from "./utils/logger.js";
 import { prisma } from "./utils/prismaClient.js";
 import playCommand from "./commands/play.js";
 import instructionCommand from "./commands/instructions.js";
+import analysisCommand from "./commands/analyze.js";
 
 // Create commands
-const commands = [playCommand, instructionCommand];
+const commands = [playCommand, instructionCommand, analysisCommand];
 
 export default class MyClient extends Client {
   commands: Collection<any, any>; // use correct type :)

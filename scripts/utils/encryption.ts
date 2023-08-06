@@ -34,4 +34,10 @@ export function decrypt(hash) {
 // Generate a 32 bytes (256 bits) long secret key
 const secretKey = crypto.randomBytes(32).toString("hex");
 
-console.log(secretKey);
+export function encryptHMAC(text) {
+  const secretKey = process.env.SECRET_KEY;
+  const hmac = crypto.createHmac("sha256", secretKey);
+  const encrypted = hmac.update(text).digest("hex");
+
+  return encrypted;
+}

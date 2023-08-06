@@ -278,6 +278,10 @@ export async function step({
 
   const completions: Inferences<Completion[]> = {};
 
+  console.log("########## oneStep");
+  console.log(newFact);
+  console.log(currentFact);
+  console.log("########## oneStep");
   const oneStep = await getInferenceResult({
     premise: [newFact],
     conclusion: currentFact,

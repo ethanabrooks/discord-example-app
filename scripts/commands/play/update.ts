@@ -89,14 +89,10 @@ export default async function handleUpdate(
   if (goToNextTurn(status)) {
     data["fact"] = { create: { text: playerInput } };
   }
+  console.log(completionsArray);
 
-  const newTurnObject = await prisma.turn.create({ data });
-  console.log(newTurnObject);
-  const completionsObjects = await prisma.completion.findMany({
-    where: { turn },
-    orderBy: { id: "desc" },
-  });
-  console.log(completionsObjects);
+  const newTurn = await prisma.turn.create({ data });
+  console.log(newTurn);
   const message = messages.join("\n");
 
   if (interaction.channel instanceof TextChannel) {
