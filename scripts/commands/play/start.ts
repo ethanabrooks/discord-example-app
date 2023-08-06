@@ -4,7 +4,7 @@ import { randomBoolean, randomChoice } from "../../utils/math.js";
 import { negate } from "../../text.js";
 import propositions from "../../propositions.js";
 import { handleInteraction } from "../../interaction.js";
-import { getSetupText } from "../../step.js";
+import { Difficulty, getSetupText, numDifficulties } from "../../step.js";
 import { getFigmaData } from "../figma.js";
 import { getSvg, getSvgUrl } from "../../utils/figma.js";
 import { getCustomCheckData } from "../customCheck.js";
@@ -16,33 +16,47 @@ function getStartOptions(interaction: ChatInputCommandInteraction) {
   if (useFigma == undefined) {
     useFigma = false;
   }
-  let coherenceCheck = interaction.options.getBoolean("coherence-check");
-  if (coherenceCheck == undefined) {
-    coherenceCheck = false;
-  }
   let useCustomCheck = interaction.options.getBoolean("custom-check");
   if (useCustomCheck == undefined) {
     useCustomCheck = false;
   }
+  let difficulty = interaction.options.getNumber("difficulty");
+  if (difficulty == undefined) {
+    difficulty = 1;
+  }
   return {
     proposition,
-    coherenceCheck,
+    difficulty,
     useCustomCheck,
     useFigma,
     figmaDescription,
   };
 }
 
+export const difficultyStrings = Object.keys(Difficulty)
+  .filter((k) => !isNaN(+k))
+  .map((k) => Difficulty[k])
+  .map((d, i) => `${i + 1}) ${d.toLowerCase().replace("_", " ")}`);
+
 export default async function handleStart(
   interaction: ChatInputCommandInteraction,
 ) {
   let {
-    coherenceCheck,
+    difficulty: difficultyNumber,
     useCustomCheck,
     figmaDescription,
     proposition,
     useFigma,
   } = getStartOptions(interaction);
+
+  const difficulty = Difficulty[difficultyNumber - 1];
+  if (difficulty == undefined) {
+    return handleInteraction({
+      interaction,
+      message: `Invalid difficulty: ${difficultyNumber}. There are ${numDifficulties} difficulties: 
+${difficultyStrings.join("\n")}`,
+    });
+  }
   const truth = randomBoolean();
   if (proposition == undefined) {
     const positiveFact = `${randomChoice(propositions)}.`;
@@ -83,8 +97,7 @@ export default async function handleStart(
 
   const data = {
     channel: interaction.channelId,
-    coherenceCheck,
-
+    difficulty: difficultyNumber - 1,
     turns: {
       create: {
         fact: { create: fact },

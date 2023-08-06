@@ -25,12 +25,12 @@ model FigmaData {
 }
 
 model Game {
-  id             Int          @id @default(autoincrement())
-  channel        String
-  coherenceCheck Boolean
-  turns          Turn[]
-  customCheck    CustomCheck? @relation(fields: [customCheckId], references: [id])
-  customCheckId  Int?
+  id            Int          @id @default(autoincrement())
+  channel       String
+  difficulty    Int
+  turns         Turn[]
+  customCheck   CustomCheck? @relation(fields: [customCheckId], references: [id])
+  customCheckId Int?
 }
 
 model Turn {

@@ -1,7 +1,7 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
-import { addFigmaDescriptionOption } from "../utils/figma.js";
-import handleStart from "./play/start.js";
+import handleStart, { difficultyStrings } from "./play/start.js";
 import handleUpdate from "./play/update.js";
+import { addFigmaDescriptionOption } from "../utils/figma.js";
 
 const subcommands = {
   // add: "add",
@@ -25,10 +25,12 @@ export default {
               .setDescription("The target proposition that GPT tries to prove.")
               .setRequired(false),
           )
-          .addBooleanOption((option) =>
+          .addIntegerOption((option) =>
             option
-              .setName("coherence-check")
-              .setDescription("Whether to check for coherence.")
+              .setName("difficulty")
+              .setDescription(
+                `Difficulty level: ${difficultyStrings.join(", ")}.`,
+              )
               .setRequired(false),
           )
           .addBooleanOption((option) =>
