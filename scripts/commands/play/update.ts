@@ -38,7 +38,6 @@ export default async function handleUpdate(
   const [proposition] = facts;
   const currentTurnNumber = turns.length - 1;
   const firstTurn = currentTurnNumber == 0;
-  const turn = turns[currentTurnNumber];
   if (playerInput == undefined) {
     playerInput = currentFact.text;
   }
@@ -92,16 +91,6 @@ export default async function handleUpdate(
   );
 
   if (goToNextTurn(status)) {
-    type FactCreateInput = {
-      text: string;
-      image?: {
-        create: {
-          svg: string;
-          description?: string;
-        };
-      };
-    };
-
     const fact = { text: playerInput };
     if (image != null) {
       fact["image"] = { create: image };
@@ -124,11 +113,6 @@ export default async function handleUpdate(
       },
     });
   }
-  const completionsObjects = await prisma.completion.findMany({
-    where: { turnId: turn.id },
-    orderBy: { id: "desc" },
-  });
-  console.log(completionsObjects);
   const message = messages.join("\n");
 
   if (interaction.channel instanceof TextChannel) {
