@@ -142,7 +142,7 @@ export function getPremiseTexts(facts: { fact: Fact; index: number }[]) {
     .map(({ fact, index }) =>
       fact.image == null ? fact.text : getFactText(fact, index),
     )
-    .map((text) => (facts.length > 2 ? `* ${text}` : text));
+    .map((text) => (facts.length > 1 ? `* ${text}` : text));
 }
 
 async function retryExtraction(
