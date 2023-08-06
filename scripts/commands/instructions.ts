@@ -1,6 +1,6 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 import { handleInteraction } from "../interaction.js";
-import { inferenceInput } from "../step.js";
+import { Implication, inferenceInput } from "../step.js";
 import { whitespaceOnly } from "../text.js";
 
 const instructions = `\
@@ -50,6 +50,7 @@ const exampleFigmaInput = inferenceInput(
       description: "figma-description",
     },
   },
+  Implication.IMPLY,
 );
 
 const useFigma = `## Use Figma

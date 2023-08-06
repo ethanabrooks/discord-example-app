@@ -1,5 +1,6 @@
 import { Completion, complete, gpt } from "./utils/gpt.js";
 import { headerPrefix, inConclusion, removeFinalPunctuation } from "./text.js";
+import { get } from "http";
 
 export type Inferences<Type> = {
   oneStep?: Type;
@@ -18,8 +19,15 @@ export type Fact = {
 
 export enum Difficulty {
   NO_CHECK,
-  COHERENCE_CHECK,
+  LIGHT_COHERENCE_CHECK,
+  HARD_COHERENCE_CHECK,
 }
+
+export enum Implication {
+  SUGGEST,
+  IMPLY,
+}
+
 export const numDifficulties = Object.keys(Difficulty).length / 2;
 type Status = "win" | "try again" | "continue";
 type FactStatus = "initial" | "updated" | "unchanged";
@@ -172,11 +180,24 @@ function conclusionText(proposition: string | null = null) {
   return `${inConclusion} ${proposition}is probably [true|false|indeterminate]`;
 }
 
-export function inferenceInput(premises: Fact[], conclusion: Fact) {
+export function inferenceInput(
+  premises: Fact[],
+  conclusion: Fact,
+  implication: Implication,
+) {
   const indexed = addIndexToFigures([...premises, conclusion]);
   const premiseTexts: string[] = getPremiseTexts(indexed.slice(0, -1));
   const proposition = getFactText(conclusion, indexed.length);
   const lastPremise = premises[premises.length - 1];
+
+  function getVerb() {
+    switch (implication) {
+      case Implication.SUGGEST:
+        return "suggest";
+      case Implication.IMPLY:
+        return "imply";
+    }
+  }
   return `\
 ${getImagesText(premises, conclusion)}\
 ${lastPremise.image == null ? "" : "\n" + lastPremise.image.description + "\n"}\
@@ -187,14 +208,18 @@ Assume ${
     premiseTexts.length > 1 ? "these premises are" : "this premise is"
   } true. ${
     premiseTexts.length > 1 ? 'Do these premises"' : "Does this premise"
-  } imply the proposition: _${removeFinalPunctuation(
+  } ${getVerb()} the proposition: _${removeFinalPunctuation(
     proposition,
   )}_? Think through it step by step. When you are done, finish with the text: "${conclusionText()}"
 `;
 }
 
-async function infer(premises: Fact[], conclusion: Fact) {
-  const input = inferenceInput(premises, conclusion);
+async function infer(
+  premises: Fact[],
+  conclusion: Fact,
+  implication: Implication,
+) {
+  const input = inferenceInput(premises, conclusion, implication);
   const completions: Completion[] = [];
   const completion = await complete({ input, model: gpt.four });
   completions.push(completion);
@@ -214,11 +239,17 @@ async function infer(premises: Fact[], conclusion: Fact) {
 async function getInferenceResult({
   premise,
   conclusion,
+  implication,
 }: {
   premise: Fact[];
   conclusion: Fact;
+  implication: Implication;
 }) {
-  const { completions, inference } = await infer(premise, conclusion);
+  const { completions, inference } = await infer(
+    premise,
+    conclusion,
+    implication,
+  );
   const success = inferenceToBoolean(inference);
   return { completions, success };
 }
@@ -278,13 +309,10 @@ export async function step({
 
   const completions: Inferences<Completion[]> = {};
 
-  console.log("########## oneStep");
-  console.log(newFact);
-  console.log(currentFact);
-  console.log("########## oneStep");
   const oneStep = await getInferenceResult({
     premise: [newFact],
     conclusion: currentFact,
+    implication: Implication.IMPLY,
   });
   completions.oneStep = oneStep.completions;
   if (!oneStep.success) {
@@ -311,32 +339,42 @@ export async function step({
   }
 
   const oneStepComment = `The new facts _${newFact.text}_`;
-  switch (difficulty) {
-    case 1:
-      const coherence = await getInferenceResult({
-        premise: [...oldFacts, currentFact, newFact],
-        conclusion: proposition,
+  function getImplication() {
+    switch (difficulty) {
+      case Difficulty.NO_CHECK:
+        return null;
+      case Difficulty.LIGHT_COHERENCE_CHECK:
+        return Implication.SUGGEST;
+      case Difficulty.HARD_COHERENCE_CHECK:
+        return Implication.IMPLY;
+      default:
+        throw new Error(`Invalid difficulty: ${difficulty}`);
+    }
+  }
+  const implication = getImplication();
+  if (implication != null) {
+    const coherence = await getInferenceResult({
+      premise: [...oldFacts, currentFact, newFact],
+      conclusion: proposition,
+      implication,
+    });
+    completions.coherence = coherence.completions;
+    if (!coherence.success) {
+      return turnResult({
+        status: "try again",
+        completions,
+        comments: [
+          ...commentsIntro,
+          `${oneStepComment}. However, taken with all of the existing facts, they do not imply the proposition. The proposed facts were rejected.`,
+        ],
       });
-      completions.coherence = coherence.completions;
-      if (!coherence.success) {
-        return turnResult({
-          status: "try again",
-          completions,
-          comments: [
-            ...commentsIntro,
-            `${oneStepComment}. However, taken with all of the existing facts, they do not imply the proposition. The proposed facts were rejected.`,
-          ],
-        });
-      }
-      break;
-
-    default:
-      break;
+    }
   }
 
   const multiStep = await getInferenceResult({
     premise: [newFact],
     conclusion: proposition,
+    implication: Implication.IMPLY,
   });
   const status = multiStep.success ? "continue" : "win";
   completions.multiStep = multiStep.completions;
