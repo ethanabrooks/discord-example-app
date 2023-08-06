@@ -71,25 +71,25 @@ export default async function handleUpdate(
   const { iv: playerIv, content: playerEnc } = encrypt(
     interaction.user.username,
   );
-  const data = {
-    status,
-    playerInput,
-    playerIv,
-    playerEnc,
-    completions: {
-      create: completionsArray,
-    },
-    game: {
-      connect: { id: game.id },
-    },
-  };
   if (goToNextTurn(status)) {
-    data["fact"] = { create: { text: playerInput } };
+    const data = {
+      status,
+      playerInput,
+      playerIv,
+      playerEnc,
+      completions: {
+        create: completionsArray,
+      },
+      fact: { create: { text: playerInput } },
+      game: {
+        connect: { id: game.id },
+      },
+    };
+    const newTurn = await prisma.turn.create({ data });
+    console.log(newTurn);
   }
   console.log(completionsArray);
 
-  const newTurn = await prisma.turn.create({ data });
-  console.log(newTurn);
   const message = messages.join("\n");
 
   if (interaction.channel instanceof TextChannel) {
