@@ -29,11 +29,11 @@ export default async function handleUpdate(
     where: { game },
   });
   const facts = turns.flatMap((t) => t.fact);
+  console.log(facts);
   const currentFact = facts[facts.length - 1];
   const oldFacts = facts.slice(1, facts.length - 1);
   const [proposition] = facts;
   const currentTurnNumber = turns.length - 1;
-  const turn = turns[currentTurnNumber];
   const firstTurn = currentTurnNumber == 0;
   if (playerInput == undefined) {
     playerInput = currentFact.text;
