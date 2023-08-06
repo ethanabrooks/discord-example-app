@@ -20,7 +20,7 @@ function getStartOptions(interaction: ChatInputCommandInteraction) {
   if (useCustomCheck == undefined) {
     useCustomCheck = false;
   }
-  let difficulty = interaction.options.getNumber("difficulty");
+  let difficulty = interaction.options.getInteger("difficulty");
   if (difficulty == undefined) {
     difficulty = 1;
   }
