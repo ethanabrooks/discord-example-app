@@ -22,6 +22,12 @@ export enum Difficulty {
   LIGHT_COHERENCE_CHECK,
   HARD_COHERENCE_CHECK,
 }
+export function getDifficulty(difficulty: number): Difficulty {
+  if (!Object.values(Difficulty).includes(difficulty)) {
+    throw new Error(`Invalid difficulty: ${difficulty}`);
+  }
+  return difficulty;
+}
 
 export enum Implication {
   SUGGEST,

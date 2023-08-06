@@ -1,6 +1,6 @@
 import { ChatInputCommandInteraction, TextChannel } from "discord.js";
 import { prisma } from "../../utils/prismaClient.js";
-import { goToNextTurn, step, Difficulty } from "../../step.js";
+import { goToNextTurn, step, getDifficulty } from "../../step.js";
 import { Completion } from "../../utils/gpt.js";
 import { handleThreads } from "../../threads.js";
 import { handleInteraction } from "../../interaction.js";
@@ -54,10 +54,7 @@ export default async function handleUpdate(
   //   default:
   //     break;
   // }
-  const difficulty: Difficulty = Difficulty[
-    game.difficulty
-  ] as unknown as Difficulty;
-
+  const difficulty = getDifficulty(game.difficulty);
   const { completions, messages, status } = await step({
     difficulty,
     currentFact,
