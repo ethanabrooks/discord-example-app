@@ -53,11 +53,12 @@ model Fact {
 }
 
 model Completion {
-  id     Int    @id @default(autoincrement())
-  input  String
-  output String
-  turn   Turn   @relation(fields: [turnId], references: [id])
-  turnId Int
+  id       Int        @id @default(autoincrement())
+  input    String
+  output   String
+  turn     Turn       @relation(fields: [turnId], references: [id])
+  turnId   Int
+  Analysis Analysis[]
 }
 
 model Image {
@@ -66,4 +67,12 @@ model Image {
   svg         String
   factId      Int     @unique
   Fact        Fact?
+}
+
+model Analysis {
+  id           Int        @id @default(autoincrement())
+  user         String
+  correct      Boolean
+  completion   Completion @relation(fields: [completionId], references: [id])
+  completionId Int
 }
