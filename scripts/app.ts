@@ -10,7 +10,7 @@ import {
   Routes,
 } from "discord.js";
 import { prisma } from "./utils/prismaClient.js";
-import diagram from "./commands/diagram.js";
+import diagram from "./commands/spec/diagram.js";
 import g from "./commands/g.js";
 
 // Create commands

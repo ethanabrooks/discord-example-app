@@ -5,10 +5,10 @@ import {
   EmbedBuilder,
   SlashCommandBuilder,
 } from "discord.js";
-import { interactionToCCRMessages, messagesToContent } from "../messages.js";
+import { interactionToCCRMessages, messagesToContent } from "../../messages.js";
 import { ChatCompletionRequestMessage } from "openai";
-import * as diagramPrompt from "../diagramPrompts.js";
-import { prisma } from "../utils/prismaClient.js";
+import * as diagramPrompt from "../../diagramPrompts.js";
+import { prisma } from "../../utils/prismaClient.js";
 
 export async function diagram(interaction: CommandInteraction) {
   const lastSpec = await prisma.spec.findFirst({
