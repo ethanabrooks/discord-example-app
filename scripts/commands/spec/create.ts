@@ -1,16 +1,11 @@
-import {
-  AttachmentBuilder,
-  ChatInputCommandInteraction,
-  CommandInteraction,
-  EmbedBuilder,
-  SlashCommandBuilder,
-} from "discord.js";
+import { CommandInteraction, EmbedBuilder } from "discord.js";
 import { interactionToCCRMessages, messagesToContent } from "../../messages.js";
 import { ChatCompletionRequestMessage } from "openai";
 import * as diagramPrompt from "../../diagramPrompts.js";
 import { prisma } from "../../utils/prismaClient.js";
+import { createSpec } from "./pull.js";
 
-export async function diagram(interaction: CommandInteraction) {
+export default async (interaction: CommandInteraction) => {
   const lastSpec = await prisma.spec.findFirst({
     where: { channel: interaction.channelId },
     orderBy: { id: "desc" },
@@ -34,26 +29,7 @@ export async function diagram(interaction: CommandInteraction) {
   const completion = await messagesToContent(messages);
   const split = completion.split("```json\n");
   const source = split[1] == null ? completion : split[1].split("\n```")[0];
-
-  if (interaction.isCommand()) {
-    interaction
-      .followUp(
-        `\
-\`\`\`json
-${source}
-\`\`\``,
-      )
-      .then(() => {
-        // Fetch the reply (interaction's message)
-        interaction.fetchReply().then(async (replyMessage) => {
-          // You can now access the message ID
-          const messageId: string = replyMessage.id;
-          const channel = replyMessage.channelId;
-
-          await prisma.spec.create({ data: { messageId, channel, source } });
-        });
-      });
-  }
+  await createSpec(interaction, source);
 
   // const spec = canvas.map((obj) => {});
 
@@ -69,14 +45,4 @@ ${source}
     embeds: [exampleEmbed],
     // files: [file],
   });
-}
-
-export default {
-  data: new SlashCommandBuilder()
-    .setName("diagram")
-    .setDescription(`Generate diagram of scene`),
-  async execute(interaction: ChatInputCommandInteraction) {
-    await interaction.deferReply();
-    await diagram(interaction);
-  },
 };

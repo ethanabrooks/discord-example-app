@@ -138,7 +138,7 @@ export async function messagesToContent(
     // Query GPT
     const content = await createChatCompletionWithBackoff({
       messages,
-      model: gpt.four,
+      model: gpt.three,
     });
     return content === undefined
       ? "Error: GPT-3 API call failed"

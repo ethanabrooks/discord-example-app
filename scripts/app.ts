@@ -10,11 +10,11 @@ import {
   Routes,
 } from "discord.js";
 import { prisma } from "./utils/prismaClient.js";
-import diagram from "./commands/spec/diagram.js";
+import spec from "./commands/spec.js";
 import g from "./commands/g.js";
 
 // Create commands
-const commands = [diagram, g];
+const commands = [spec, g];
 
 export default class MyClient extends Client {
   commands: Collection<any, any>; // use correct type :)
