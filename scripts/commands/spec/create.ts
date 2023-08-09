@@ -13,7 +13,6 @@ export default async (interaction: CommandInteraction) => {
   let messages: ChatCompletionRequestMessage[] = await interactionToCCRMessages(
     {
       interaction,
-      since: lastSpec?.messageId,
     },
   );
 
