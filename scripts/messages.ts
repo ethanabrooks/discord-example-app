@@ -1,5 +1,5 @@
 import { Collection, CommandInteraction, Message } from "discord.js";
-import { createChatCompletionWithBackoff, gpt } from "./utils/gpt.js";
+import { createChatCompletionWithBackoff, gpt, complete } from "./utils/gpt.js";
 import { ChatCompletionRequestMessage } from "openai";
 import { Logger } from "pino";
 import get from "axios";
@@ -116,4 +116,38 @@ export async function messagesToContent(
   } else {
     return "Error: Failed to fetch messages";
   }
+}
+
+export async function queryInferences(
+  inferences: string[][],
+): Promise<string[]> {
+    let responses: string[] = [];
+
+    const n_queries: number = inferences.length; 
+    for (let q = 0; q < n_queries; q++) {
+      let query: string = `
+        The following is a numbered list of premises. 
+        Does the chain of implication from 1 to N hold? 
+        Think about it step by step.
+      `;
+      const n_premises: number = inferences[q].length;
+
+      for (let p = 0; p < n_premises; p++) {
+        query += (p+1) + ". " + inferences[q][p] + "\n";
+      }
+      query += "Write a justification for the result and then in a new line write a simple 'Yes' or 'No'."
+      // console.log("Query:", query)
+
+      // Query GPT
+      const content = await complete({
+        "input": query
+      });
+      // console.log("Response", content)
+      const res: string = content === undefined
+          ? "Error: GPT API call failed"
+          : content.output;
+      responses.push(res);
+    }
+
+    return responses;
 }

@@ -16,6 +16,7 @@ import figmaCommand from "./commands/figma.js";
 import playCommand from "./commands/play.js";
 import instructionCommand from "./commands/instructions.js";
 import gCommand from "./commands/g.js";
+import ticCommand from "./commands/tictactoe.js";
 
 // Create commands
 const commands = [
@@ -24,6 +25,7 @@ const commands = [
   playCommand,
   instructionCommand,
   gCommand,
+  ticCommand,
 ];
 
 export default class MyClient extends Client {
