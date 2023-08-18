@@ -9,7 +9,8 @@ import { encode } from "gpt-3-encoder";
 import { Logger } from "pino";
 import catchError from "./errors.js";
 
-const MODEL = "gpt-3.5-turbo-0301";
+// const MODEL = "gpt-3.5-turbo-0301";
+const MODEL = "gpt-4";
 export const DEBUG = false;
 
 export type Completion = {

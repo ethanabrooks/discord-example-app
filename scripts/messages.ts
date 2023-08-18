@@ -125,18 +125,23 @@ export async function queryInferences(
 
     const n_queries: number = inferences.length; 
     for (let q = 0; q < n_queries; q++) {
-      let query: string = `
-        The following is a numbered list of premises. 
-        Does the chain of implication from 1 to N hold? 
-        Think about it step by step.
-      `;
-      const n_premises: number = inferences[q].length;
+      const n_statements: number = inferences[q].length;
+      let query: string = 
+`
+The following is a numbered list of ${n_statements} statements. 
+You need to figure out whether the chain of inference holds.
+This means that from statement 1 you should be able to infer statement 2. Then from statement 2 to infer statement 3 and so on until statement ${n_statements}. 
+The chain is only true when all single-step inferences can be made with certainty.
+The statements are the following:
+`;
 
-      for (let p = 0; p < n_premises; p++) {
+      for (let p = 0; p < n_statements; p++) {
         query += (p+1) + ". " + inferences[q][p] + "\n";
       }
-      query += "Write a justification for the result and then in a new line write a simple 'Yes' or 'No'."
-      // console.log("Query:", query)
+      query += 
+`Think about it step by step and write an explanation regarding whether the full chain is true or false. 
+Then in a new line say either 'Yes' or 'No' as a response to the question "Is the above true?".
+`
 
       // Query GPT
       const content = await complete({

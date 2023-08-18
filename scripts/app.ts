@@ -20,11 +20,11 @@ import ticCommand from "./commands/tictactoe.js";
 
 // Create commands
 const commands = [
-  customCheckCommand,
-  figmaCommand,
-  playCommand,
-  instructionCommand,
-  gCommand,
+  // customCheckCommand,
+  // figmaCommand,
+  // playCommand,
+  // instructionCommand,
+  // gCommand,
   ticCommand,
 ];
 

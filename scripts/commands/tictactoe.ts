@@ -49,37 +49,27 @@ async function readState(filePath: string): Promise<string[][]> {
 }
 
 function printState(array: any[][]): string {
-    // Verbatim
+    // Verbatim discord format
     let formattedArray: string = "```\n";
 
-    var table = new AsciiTable('State');
-    for (const row of array) {
-      // table.addRowMatrix([row]);
+    // Create table
+    let table = new AsciiTable();
+    for (let row of array) {
+      if (row.every(element => element === "")) {
+        row = row.map(() => "  ");
+      }
       table.addRow(row);
       table.addRow(row.map(() => "-"))
     }
+    for (const row of array) {
+      for (let c = 0; c < row.length; c++) {
+        table.setAlign(c, AsciiTable.CENTER);
+      }
+    }
 
+    table.setTitle('Tic-Tac-Trö');
+    table.setTitleAlignCenter();
     formattedArray += table.toString();
-
-    // // Find max column size
-    // const maxStringLengths: number[] = new Array(array[0].length).fill(0);
-    // for (const row of array) {
-    //     for (let colIndex = 0; colIndex < row.length; colIndex++) {
-    //         const cellLength = row[colIndex].length;
-    //         maxStringLengths[colIndex] = Math.max(maxStringLengths[colIndex], cellLength);
-    //     }
-    // }
-
-    // for (let r = 0; r < array.length; r++) {
-    //   for (let c = 0; c < array[0].length; c++) {
-    //     // Pad cell value to column max length
-    //     const cellValue = array[r][c];
-    //     const formattedCell = cellValue.padEnd(maxStringLengths[c] - cellValue.length, " ");
-    //     formattedArray += formattedCell + " | ";
-    //   }
-    //   formattedArray += "\n" + "-".repeat(maxStringLengths.reduce((sum, num) => sum + num + 3, 0)) + "\n";
-    // }
-
     formattedArray += "```";
     return formattedArray;
 }
@@ -293,11 +283,12 @@ export default {
             const yes_regex = /^yes/i;
             const no_regex = /^no/i;
             if (yes_regex.test(lastLine)) {
-                console.log("The string contains 'yes'.");
-                winCond = "yes";
+              // console.log("The string contains 'yes'.");
+              winCond = "yes";
+              break;
             } else if (no_regex.test(lastLine))  {
-                console.log("The string contains 'no'.");
-                winCond = "no";
+              // console.log("The string contains 'no'.");
+              winCond = "no";
             } else {
               winCond = "undef"
             }
@@ -308,16 +299,15 @@ export default {
         saveState(filePath, grid);
         console.log("Saved", grid);
 
-        let returnMsg = "State:\n" + printState(grid)
+        let returnMsg = printState(grid)
         if (winCond == "yes") {
-          returnMsg = "You win!\n" + returnMsg
+          returnMsg = "## You win!\n" + returnMsg
         } else if (winCond == "undef") {
-          returnMsg = "Maybe you won?\n" + returnMsg
+          returnMsg = "### Check logs 🤷\n" + returnMsg
         }
 
         await handleInteraction({
           interaction,
-          // message: ` the game`,
           message: returnMsg,
         });
 
