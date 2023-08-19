@@ -3,6 +3,7 @@ import { createChatCompletionWithBackoff, gpt, complete } from "./utils/gpt.js";
 import { ChatCompletionRequestMessage } from "openai";
 import { Logger } from "pino";
 import get from "axios";
+import { Completion } from "./utils/gpt.js"
 
 const clientId = process.env.APP_ID;
 
@@ -120,39 +121,62 @@ export async function messagesToContent(
 
 export async function queryInferences(
   inferences: string[][],
-): Promise<string[]> {
-    let responses: string[] = [];
+): Promise<Completion[][]> {
+    // let responses: string[][] = [];
+    let completions: Completion[][] = [];
 
     const n_queries: number = inferences.length; 
     for (let q = 0; q < n_queries; q++) {
       const n_statements: number = inferences[q].length;
-      let query: string = 
-`
-The following is a numbered list of ${n_statements} statements. 
-You need to figure out whether the chain of inference holds.
-This means that from statement 1 you should be able to infer statement 2. Then from statement 2 to infer statement 3 and so on until statement ${n_statements}. 
-The chain is only true when all single-step inferences can be made with certainty.
-The statements are the following:
+      let q_compl: Completion[] = [];
+      for (let s = 0; s < n_statements-1; s++) {
+        const query: string = 
+` 
+Evaluate whether the conclusion can be inferred from the premise with certainty.
+Premise: ${inferences[q][s]}
+Conclusion: ${inferences[q][s+1]}
+
+Think about it step by step and write an explanation regarding whether the conclusion can be inferred from the premise and why.
+After that, in a new line, write a single "Yes" or "No" as the response to the question 'Can the conclusion be inferred from the premise?.
 `;
 
-      for (let p = 0; p < n_statements; p++) {
-        query += (p+1) + ". " + inferences[q][p] + "\n";
-      }
-      query += 
-`Think about it step by step and write an explanation regarding whether the full chain is true or false. 
-Then in a new line say either 'Yes' or 'No' as a response to the question "Is the above true?".
-`
+        // Query GPT
+        const content = await complete({
+          "input": query
+        });
+        // console.log("Response", content)
+        const res: string = content === undefined
+            ? "Error: GPT API call failed"
+            : content.output;
+        // responses.push(res);
+        const compl: Completion = ({
+          "input": query,
+          "output": content.output
+        })
+        q_compl.push(compl);
 
-      // Query GPT
-      const content = await complete({
-        "input": query
-      });
-      // console.log("Response", content)
-      const res: string = content === undefined
-          ? "Error: GPT API call failed"
-          : content.output;
-      responses.push(res);
+      //   // Regex check
+      //   const lines = res.split('\n');
+      //   const lastLine = lines[lines.length - 1];
+
+      //   // Check whether yes or no was in the last line
+      //   const yes_regex = /^yes/i;
+      //   const no_regex = /^no/i;
+      //   if (yes_regex.test(lastLine)) {
+      //     // console.log("The string contains 'yes'.");
+      //     q_responses.push("yes");
+      //   } else if (no_regex.test(lastLine))  {
+      //     // console.log("The string contains 'no'.");
+      //     q_responses.push("no");
+      //   } else {
+      //     q_responses.push("undef");
+      //   }
+      // }
+      // responses.push(q_responses);
     }
+    completions.push(q_compl);
+  }
 
-    return responses;
+    // return responses;
+    return completions;
 }

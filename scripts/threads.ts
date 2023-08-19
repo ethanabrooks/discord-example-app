@@ -12,6 +12,14 @@ const threadNames: Inferences<string> = {
   custom: "Reasoning for custom check",
   multiStep: "Reasoning for chain inference",
   oneStep: "Reasoning for replacement inference",
+  rowFwd: "Reasoning for row inference",
+  rowBwd: "Reasoning for backwards row inference",
+  colFwd: "Reasoning for column inference",
+  colBwd: "Reasoning for backwards column inference",
+  mainDiagFwd: "Reasoning for diagonal inference",
+  mainDiagBwd: "Reasoning for backwards diagonal inference",
+  antiDiagFwd: "Reasoning for anti-diagonal inference",
+  antiDiagBwd: "Reasoning for backwards anti-diagonal inference",
 };
 
 export async function handleThreads(

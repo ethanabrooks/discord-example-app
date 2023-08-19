@@ -8,6 +8,14 @@ export type Inferences<Type> = {
   coherence?: Type;
   custom?: Type;
   multiStep?: Type;
+  rowFwd?: Type;
+  rowBwd?: Type;
+  colFwd?: Type;
+  colBwd?: Type;
+  mainDiagFwd?: Type;
+  mainDiagBwd?: Type;
+  antiDiagFwd?: Type;
+  antiDiagBwd?: Type;
 };
 export type Image = {
   svg: string;

@@ -1,9 +1,12 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
+import { ChatInputCommandInteraction, SlashCommandBuilder, TextChannel } from "discord.js";
 import handleStart, { difficultyStrings } from "./play/start.js";
 import handleUpdate from "./play/update.js";
 import { addFigmaDescriptionOption } from "../utils/figma.js";
 import { handleInteraction } from "../interaction.js";
+import { handleThreads } from "../threads.js";
 import { interactionToMessages, messagesToContent, queryInferences } from "../messages.js";
+import { Completion } from "../utils/gpt.js"
+import { Inferences } from "../step.js";
 
 // Does not look that clean -- no idea :)
 import pkg from 'ascii-table'
@@ -74,9 +77,15 @@ function printState(array: any[][]): string {
     return formattedArray;
 }
 
-function checksToDo(grid: string[][], row, col): string[][] {
+type checkType = {
+  "check": string[],
+  "dir": string
+}
+
+function checksToDo(grid: string[][], row, col): checkType[] {
   // Given a move and the current state decide which checks to perform
-  const checks: string[][] = [];
+  // const checks: string[][] = [];
+  const checks: checkType[] = [];
   const numRows = grid.length;
   const numCols = grid[0].length;
 
@@ -134,24 +143,90 @@ function checksToDo(grid: string[][], row, col): string[][] {
   }
 
   if (addRow) {
-    checks.push(rowCheck);
-    checks.push(rowCheck.slice().reverse()); // Can perform inference in both directions
+    // checks.push(rowCheck);
+    checks.push({
+      "check": rowCheck,
+      "dir": "rowFwd"
+    })
+    // checks.push(rowCheck.slice().reverse()); // Can perform inference in both directions
+    checks.push({
+      "check": rowCheck.slice().reverse(),
+      "dir": "rowBwd"
+    })
   }
   if (addCol) {
-    checks.push(colCheck);
-    checks.push(colCheck.slice().reverse());
+    // checks.push(colCheck);
+    checks.push({
+      "check": colCheck,
+      "dir": "colFwd"
+    })
+    // checks.push(colCheck.slice().reverse());
+    checks.push({
+      "check": colCheck.slice().reverse(),
+      "dir": "colBwd"
+    })
   }
   if (addMainDiag) {
-    checks.push(mainDiagCheck);
-    checks.push(mainDiagCheck.slice().reverse());
+    // checks.push(mainDiagCheck);
+    checks.push({
+      "check": mainDiagCheck,
+      "dir": "mainDiagFwd"
+    })
+    // checks.push(mainDiagCheck.slice().reverse());
+    checks.push({
+      "check": mainDiagCheck.slice().reverse(),
+      "dir": "mainDiagBwd"
+    })
   }
   if (addAntiDiag) {
-    checks.push(antiDiagCheck);
-    checks.push(antiDiagCheck.slice().reverse());
+    // checks.push(antiDiagCheck);
+    checks.push({
+      "check": antiDiagCheck,
+      "dir": "antiDiagFwd"
+    })
+    // checks.push(antiDiagCheck.slice().reverse());
+    checks.push({
+      "check": antiDiagCheck.slice().reverse(),
+      "dir": "antiDiagBwd"
+    })
   }
 
   return checks;
 }
+
+function parseCompletions(completions: Completion[][], inferences: string[][]): string[][] {
+    let responses: string[][] = [];
+
+    const n_queries: number = inferences.length; 
+    for (let q = 0; q < n_queries; q++) {
+      const n_statements: number = inferences[q].length;
+      let q_responses: string[] = [];
+      for (let s = 0; s < n_statements-1; s++) {
+        const res = completions[q][s].output;
+
+        // Regex check
+        const lines = res.split('\n');
+        const lastLine = lines[lines.length - 1];
+
+        // Check whether yes or no was in the last line
+        const yes_regex = /^yes/i;
+        const no_regex = /^no/i;
+        if (yes_regex.test(lastLine)) {
+          // console.log("The string contains 'yes'.");
+          q_responses.push("yes");
+        } else if (no_regex.test(lastLine))  {
+          // console.log("The string contains 'no'.");
+          q_responses.push("no");
+        } else {
+          q_responses.push("undef");
+        }
+      }
+      responses.push(q_responses);
+    }
+
+  return responses;
+}
+
 
 export default {
   data: new SlashCommandBuilder()
@@ -227,7 +302,7 @@ export default {
         await handleInteraction({
           interaction,
           // message: `Started a new game`,
-          message: "State:\n" + printState(grid),
+          message: "# New Game\n" + printState(grid),
         });
 
         break;
@@ -266,31 +341,95 @@ export default {
 
         // Get checks to perform
         let winCond: string = "no"
-        const checks: string[][] = checksToDo(grid, row, col);
+        // const checks: string[][] = checksToDo(grid, row, col);
+        const checks: checkType[] = checksToDo(grid, row, col);
         console.log("Checks:", checks);
 
         if (checks.length > 0) {
-          const responses: string[] = await queryInferences(checks);
+          const completions: Completion[][] = await queryInferences(checks.map(c => c.check));
+          const responses: string[][] = parseCompletions(completions, checks.map(c => c.check));
 
 
           // Parse responses
-          for (const res of responses) {
-            // Break into lines
-            const lines = res.split('\n');
-            const lastLine = lines[lines.length - 1];
+          let inf: Inferences<Completion[]>;
+          // for (const res of responses) {
+          for (let r = 0; r < responses.length; r++) {
+            const res = responses[r];
+            const compl = completions[r];
 
-            // Check whether yes or no was in the last line
-            const yes_regex = /^yes/i;
-            const no_regex = /^no/i;
-            if (yes_regex.test(lastLine)) {
+            // Break into lines
+            // const lines = res.split('\n');
+            // const lastLine = lines[lines.length - 1];
+
+            // // Check whether yes or no was in the last line
+            // const yes_regex = /^yes/i;
+            // const no_regex = /^no/i;
+            // if (yes_regex.test(lastLine)) {
+            console.log("Testing win condition", res)
+            if (res.every(item => item === "yes")) {
               // console.log("The string contains 'yes'.");
               winCond = "yes";
               break;
-            } else if (no_regex.test(lastLine))  {
+            // } else if (no_regex.test(lastLine))  {
+            } else if (res.includes("undef"))  {
               // console.log("The string contains 'no'.");
-              winCond = "no";
-            } else {
               winCond = "undef"
+            } else {
+              winCond = "no";
+            }
+            
+            // inf[checks[r].dir] = compl; 
+            switch (checks[r].dir) {
+              case "rowFwd":
+                inf = {
+                  "rowFwd": compl
+                };
+                break;
+              case "rowBwd":
+                inf = {
+                  "rowBwd": compl
+                };
+                break;
+              case "colFwd":
+                inf = {
+                  "colFwd": compl
+                };
+                break;
+              case "colBwd":
+                inf = {
+                  "colBwd": compl
+                };
+                break;
+              case "mainDiagFwd":
+                inf = {
+                  "mainDiagFwd": compl
+                };
+                break;
+              case "mainDiagBwd":
+                inf = {
+                  "mainDiagBwd": compl
+                };
+                break;
+              case "antiDiagFwd":
+                inf = {
+                  "antiDiagFwd": compl
+                };
+                break;
+              case "antiDiagBwd":
+                inf = {
+                  "antiDiagBwd": compl
+                };
+                break;
+
+              default:
+                inf = {
+                  "rowFwd": compl
+                };
+
+            }
+
+            if (interaction.channel instanceof TextChannel) {
+              await handleThreads(interaction.channel, inf);
             }
           }
         }
