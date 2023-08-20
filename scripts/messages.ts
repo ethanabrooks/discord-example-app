@@ -132,12 +132,12 @@ export async function queryInferences(
       for (let s = 0; s < n_statements-1; s++) {
         const query: string = 
 ` 
-Evaluate whether the conclusion can be inferred from the premise with certainty.
-Premise: ${inferences[q][s]}
-Conclusion: ${inferences[q][s+1]}
+Does statement A suggest statement B?
+Statement A: ${inferences[q][s]}
+Statement B: ${inferences[q][s+1]}
 
 Think about it step by step and write an explanation regarding whether the conclusion can be inferred from the premise and why.
-After that, in a new line, write a single "Yes" or "No" as the response to the question 'Can the conclusion be inferred from the premise?.
+After that, in a new line, write a single "Yes" or "No" as the response to the question 'Does statement A suggest statement B?".
 `;
 
         // Query GPT

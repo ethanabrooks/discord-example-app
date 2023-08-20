@@ -1,7 +1,6 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder, TextChannel } from "discord.js";
 import handleStart, { difficultyStrings } from "./play/start.js";
 import handleUpdate from "./play/update.js";
-import { addFigmaDescriptionOption } from "../utils/figma.js";
 import { handleInteraction } from "../interaction.js";
 import { handleThreads } from "../threads.js";
 import { interactionToMessages, messagesToContent, queryInferences } from "../messages.js";
@@ -61,9 +60,39 @@ function printState(array: any[][]): string {
       if (row.every(element => element === "")) {
         row = row.map(() => "  ");
       }
-      table.addRow(row);
+
+      // Split row if too long
+      const threshold = 20;
+      let tmpRow = row;
+      if (tmpRow.every((str) => str.length < threshold)) {
+          table.addRow(tmpRow);
+      } else {
+        while (tmpRow.some((str) => str.length > threshold)) {
+          let nextRow: string[] = [];
+          for (let s = 0; s < tmpRow.length; s++) {
+            // Split
+            if (tmpRow[s].length > threshold) {
+              nextRow.push(tmpRow[s].substring(threshold));
+              tmpRow[s] = tmpRow[s].substring(0, threshold);
+              // const idx = tmpRow[s].indexOf(" ", threshold)
+              // nextRow.push(tmpRow[s].substring(idx));
+              // tmpRow[s] = tmpRow[s].substring(0, idx);
+            } else {
+              nextRow.push("")
+            }
+          }
+          table.addRow(tmpRow);
+          tmpRow = nextRow;
+        }
+        // Add extra row if necessary
+        if (tmpRow.some((str) => str.length > 0)) {
+          table.addRow(tmpRow);
+        }
+      }
+
       table.addRow(row.map(() => "-"))
     }
+
     for (const row of array) {
       for (let c = 0; c < row.length; c++) {
         table.setAlign(c, AsciiTable.CENTER);
@@ -143,48 +172,40 @@ function checksToDo(grid: string[][], row, col): checkType[] {
   }
 
   if (addRow) {
-    // checks.push(rowCheck);
     checks.push({
       "check": rowCheck,
       "dir": "rowFwd"
     })
-    // checks.push(rowCheck.slice().reverse()); // Can perform inference in both directions
     checks.push({
       "check": rowCheck.slice().reverse(),
       "dir": "rowBwd"
     })
   }
   if (addCol) {
-    // checks.push(colCheck);
     checks.push({
       "check": colCheck,
       "dir": "colFwd"
     })
-    // checks.push(colCheck.slice().reverse());
     checks.push({
       "check": colCheck.slice().reverse(),
       "dir": "colBwd"
     })
   }
   if (addMainDiag) {
-    // checks.push(mainDiagCheck);
     checks.push({
       "check": mainDiagCheck,
       "dir": "mainDiagFwd"
     })
-    // checks.push(mainDiagCheck.slice().reverse());
     checks.push({
       "check": mainDiagCheck.slice().reverse(),
       "dir": "mainDiagBwd"
     })
   }
   if (addAntiDiag) {
-    // checks.push(antiDiagCheck);
     checks.push({
       "check": antiDiagCheck,
       "dir": "antiDiagFwd"
     })
-    // checks.push(antiDiagCheck.slice().reverse());
     checks.push({
       "check": antiDiagCheck.slice().reverse(),
       "dir": "antiDiagBwd"
@@ -212,10 +233,8 @@ function parseCompletions(completions: Completion[][], inferences: string[][]): 
         const yes_regex = /^yes/i;
         const no_regex = /^no/i;
         if (yes_regex.test(lastLine)) {
-          // console.log("The string contains 'yes'.");
           q_responses.push("yes");
         } else if (no_regex.test(lastLine))  {
-          // console.log("The string contains 'no'.");
           q_responses.push("no");
         } else {
           q_responses.push("undef");
@@ -301,7 +320,6 @@ export default {
 
         await handleInteraction({
           interaction,
-          // message: `Started a new game`,
           message: "# New Game\n" + printState(grid),
         });
 
@@ -341,7 +359,6 @@ export default {
 
         // Get checks to perform
         let winCond: string = "no"
-        // const checks: string[][] = checksToDo(grid, row, col);
         const checks: checkType[] = checksToDo(grid, row, col);
         console.log("Checks:", checks);
 
@@ -352,33 +369,21 @@ export default {
 
           // Parse responses
           let inf: Inferences<Completion[]>;
-          // for (const res of responses) {
           for (let r = 0; r < responses.length; r++) {
             const res = responses[r];
             const compl = completions[r];
 
-            // Break into lines
-            // const lines = res.split('\n');
-            // const lastLine = lines[lines.length - 1];
-
-            // // Check whether yes or no was in the last line
-            // const yes_regex = /^yes/i;
-            // const no_regex = /^no/i;
-            // if (yes_regex.test(lastLine)) {
             console.log("Testing win condition", res)
             if (res.every(item => item === "yes")) {
-              // console.log("The string contains 'yes'.");
               winCond = "yes";
               break;
-            // } else if (no_regex.test(lastLine))  {
             } else if (res.includes("undef"))  {
-              // console.log("The string contains 'no'.");
               winCond = "undef"
             } else {
               winCond = "no";
             }
             
-            // inf[checks[r].dir] = compl; 
+            // Bad bad code
             switch (checks[r].dir) {
               case "rowFwd":
                 inf = {
