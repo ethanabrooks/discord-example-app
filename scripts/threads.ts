@@ -5,13 +5,20 @@ import {
   chunkString,
   whitespaceOnly,
 } from "./text.js";
-import { Inferences } from "./step.js";
+// import { Inferences } from "./commands/tictactoe.js";
+
+type Inferences<Type> = {
+  rowFwd?: Type;
+  rowBwd?: Type;
+  colFwd?: Type;
+  colBwd?: Type;
+  mainDiagFwd?: Type;
+  mainDiagBwd?: Type;
+  antiDiagFwd?: Type;
+  antiDiagBwd?: Type;
+};
 
 const threadNames: Inferences<string> = {
-  coherence: "Reasoning for coherence inference",
-  custom: "Reasoning for custom check",
-  multiStep: "Reasoning for chain inference",
-  oneStep: "Reasoning for replacement inference",
   rowFwd: "Reasoning for row inference",
   rowBwd: "Reasoning for backwards row inference",
   colFwd: "Reasoning for column inference",

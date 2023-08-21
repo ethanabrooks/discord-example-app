@@ -122,7 +122,6 @@ export async function messagesToContent(
 export async function queryInferences(
   inferences: string[][],
 ): Promise<Completion[][]> {
-    // let responses: string[][] = [];
     let completions: Completion[][] = [];
 
     const n_queries: number = inferences.length; 
@@ -132,12 +131,19 @@ export async function queryInferences(
       for (let s = 0; s < n_statements-1; s++) {
         const query: string = 
 ` 
-Does statement A suggest statement B?
+Given these two statements
 Statement A: ${inferences[q][s]}
 Statement B: ${inferences[q][s+1]}
 
-Think about it step by step and write an explanation regarding whether the conclusion can be inferred from the premise and why.
-After that, in a new line, write a single "Yes" or "No" as the response to the question 'Does statement A suggest statement B?".
+Does Statement A suggest Statement B? That is, can you think of a scenario where Statement A being true implies that Statement B is also true?
+Think about it step by step and write a detailed explanation.
+After the explanation, write a single "Yes" or "No" in a new line as the response to the question "Does statement A suggest statement B?".
+
+The format should be:
+
+Explanation: ...
+
+[Yes/No]
 `;
 
         // Query GPT
@@ -154,25 +160,6 @@ After that, in a new line, write a single "Yes" or "No" as the response to the q
           "output": content.output
         })
         q_compl.push(compl);
-
-      //   // Regex check
-      //   const lines = res.split('\n');
-      //   const lastLine = lines[lines.length - 1];
-
-      //   // Check whether yes or no was in the last line
-      //   const yes_regex = /^yes/i;
-      //   const no_regex = /^no/i;
-      //   if (yes_regex.test(lastLine)) {
-      //     // console.log("The string contains 'yes'.");
-      //     q_responses.push("yes");
-      //   } else if (no_regex.test(lastLine))  {
-      //     // console.log("The string contains 'no'.");
-      //     q_responses.push("no");
-      //   } else {
-      //     q_responses.push("undef");
-      //   }
-      // }
-      // responses.push(q_responses);
     }
     completions.push(q_compl);
   }

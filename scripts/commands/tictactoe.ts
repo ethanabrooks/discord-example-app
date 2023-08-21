@@ -1,11 +1,9 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder, TextChannel } from "discord.js";
-import handleStart, { difficultyStrings } from "./play/start.js";
-import handleUpdate from "./play/update.js";
 import { handleInteraction } from "../interaction.js";
 import { handleThreads } from "../threads.js";
-import { interactionToMessages, messagesToContent, queryInferences } from "../messages.js";
+import { queryInferences } from "../messages.js";
 import { Completion } from "../utils/gpt.js"
-import { Inferences } from "../step.js";
+
 
 // Does not look that clean -- no idea :)
 import pkg from 'ascii-table'
@@ -14,6 +12,17 @@ const AsciiTable = pkg; //"ascii-table";
 const subcommands = {
   start: "start",
   update: "update",
+};
+
+type Inferences<Type> = {
+  rowFwd?: Type;
+  rowBwd?: Type;
+  colFwd?: Type;
+  colBwd?: Type;
+  mainDiagFwd?: Type;
+  mainDiagBwd?: Type;
+  antiDiagFwd?: Type;
+  antiDiagBwd?: Type;
 };
 
 // Game state
@@ -72,11 +81,16 @@ function printState(array: any[][]): string {
           for (let s = 0; s < tmpRow.length; s++) {
             // Split
             if (tmpRow[s].length > threshold) {
-              nextRow.push(tmpRow[s].substring(threshold));
-              tmpRow[s] = tmpRow[s].substring(0, threshold);
-              // const idx = tmpRow[s].indexOf(" ", threshold)
-              // nextRow.push(tmpRow[s].substring(idx));
-              // tmpRow[s] = tmpRow[s].substring(0, idx);
+              // nextRow.push(tmpRow[s].substring(threshold));
+              // tmpRow[s] = tmpRow[s].substring(0, threshold);
+              // const idx = Math.min(tmpRow[s].indexOf(" ", threshold), tmpRow[s].length-1);
+              let idx = tmpRow[s].indexOf(" ", threshold);
+              if (idx === -1) {
+                idx = tmpRow[s].length;
+              }
+              // idx = min(idx, tmpRow[s].length);
+              nextRow.push(tmpRow[s].substring(idx));
+              tmpRow[s] = tmpRow[s].substring(0, idx);
             } else {
               nextRow.push("")
             }
@@ -373,16 +387,6 @@ export default {
             const res = responses[r];
             const compl = completions[r];
 
-            console.log("Testing win condition", res)
-            if (res.every(item => item === "yes")) {
-              winCond = "yes";
-              break;
-            } else if (res.includes("undef"))  {
-              winCond = "undef"
-            } else {
-              winCond = "no";
-            }
-            
             // Bad bad code
             switch (checks[r].dir) {
               case "rowFwd":
@@ -436,6 +440,17 @@ export default {
             if (interaction.channel instanceof TextChannel) {
               await handleThreads(interaction.channel, inf);
             }
+
+            console.log("Testing win condition", res)
+            if (res.every(item => item === "yes")) {
+              winCond = "yes";
+              break;
+            } else if (res.includes("undef"))  {
+              winCond = "undef"
+            } else {
+              winCond = "no";
+            }
+            
           }
         }
 
